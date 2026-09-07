@@ -101,7 +101,11 @@
   `index.html`/`room.html` zeigen fest codiert auf die Render-URL
   (`https://der-dummste-fliegt.onrender.com`, `SERVER_URL`-Konstante). Der Server erlaubt
   Cross-Origin-Zugriffe nur von der GitHub-Pages-Origin (`FRONTEND_ORIGIN`-Umgebungsvariable in
-  `server.js`, auf Render zu setzen).
+  `server.js`, Fallback `https://bread-005.github.io`, auf Render zusätzlich als Umgebungsvariable
+  zu setzen). Der Workflow `.github/workflows/deploy-pages.yml` führt `public/` und `frontend/`
+  bei jedem Push nach `main` zu einem gemeinsamen Verzeichnis zusammen (da `index.html`
+  `frontend/...` als Geschwisterordner referenziert) und deployt es über die GitHub-Pages-Actions
+  nach `https://bread-005.github.io/der-dummste-fliegt/`.
 - Da ein Seitenwechsel den Socket trennt, hat jeder Spieler eine stabile `idPlayer`
   (`crypto.randomUUID()`, persistiert in `sessionStorage`, siehe `frontend/js/playerIdentity.js`).
   Beim Wechsel Lobby → Raum verbindet sich ein neuer Socket und tritt mit derselben `idPlayer`
@@ -293,8 +297,9 @@
 ## Nächste Schritte (fachlich offen)
 
 - Punktevergabe/Statistiken über eine einzelne Partie hinaus.
-- Render-Service (`https://der-dummste-fliegt.onrender.com`) läuft bereits für `server/`.
-  GitHub-Repository anlegen, GitHub Pages für `public/`/`frontend/` einrichten und die
-  `FRONTEND_ORIGIN`-Umgebungsvariable in Render mit der tatsächlichen GitHub-Pages-URL
-  belegen (Platzhalter `REPLACE_WITH_GITHUB_PAGES_URL` in `server.js`, siehe
-  Architektur-Abschnitt).
+- Render-Service (`https://der-dummste-fliegt.onrender.com`) läuft bereits für `server/`, GitHub
+  Pages (`https://bread-005.github.io/der-dummste-fliegt/`) läuft bereits für `public/`/
+  `frontend/` (siehe Architektur-Abschnitt). Offen: die `FRONTEND_ORIGIN`-Umgebungsvariable muss
+  noch zusätzlich in Render selbst gesetzt werden (Wert `https://bread-005.github.io`, ohne
+  Pfad) — der Fallback in `server.js` deckt das nur ab, solange die Umgebungsvariable dort nicht
+  explizit gesetzt ist.

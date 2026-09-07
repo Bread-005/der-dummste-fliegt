@@ -31,7 +31,7 @@ import {
 import {loadQuestions} from "./questionRepository.js";
 
 const portServer = process.env.PORT || 3000;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "https://REPLACE_WITH_GITHUB_PAGES_URL";
+const frontendOrigin = process.env.FRONTEND_ORIGIN || "https://bread-005.github.io";
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
 const VOTING_DURATION_MS = 30000;
