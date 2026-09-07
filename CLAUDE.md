@@ -85,27 +85,32 @@
 
 ## Architektur
 
-- Echte Mehrseiten-Struktur, kein SPA: `public/index.html` ist die Lobby-Seite
-  (`frontend/js/main.js`), `public/room.html` die Raum-/späte Spiel-Seite (`frontend/js/room.js`).
-  Navigation zwischen beiden ist ein echter Seitenwechsel (`window.location.href`), keine
-  History-API-Simulation.
-- Frontend (`public/`, `frontend/`) und Backend sind getrennt gehostet: Das Frontend läuft
-  statisch über GitHub Pages, `server/server.js` ausschließlich als Socket.IO-Backend über
-  Render. Der Server liefert deshalb keine statischen Dateien mehr aus (kein `express.static`,
-  keine `GET /room/:roomCode`-Route) — das Docker-Image für Render enthält bewusst nur
-  `server/` (siehe `Dockerfile`/`.dockerignore`), `public/`/`frontend/` werden separat über
-  GitHub Pages ausgeliefert. Da GitHub Pages kein serverseitiges Routing kennt, liest
-  `readRoomCodeFromUrl()` in `room.js` den Raumcode aus dem Query-Parameter `?room=` statt aus
-  dem URL-Pfad; `main.js` navigiert entsprechend zu `room.html?room=<roomCode>`. Die
-  Socket.IO-Verbindung (`frontend/js/socketClient.js`) und das `socket.io.js`-Client-Script in
+- Echte Mehrseiten-Struktur, kein SPA: `index.html` (im Repo-Root) ist die Lobby-Seite
+  (`frontend/js/main.js`), `room.html` (ebenfalls im Repo-Root) die Raum-/späte Spiel-Seite
+  (`frontend/js/room.js`). Navigation zwischen beiden ist ein echter Seitenwechsel
+  (`window.location.href`), keine History-API-Simulation.
+- Frontend (`index.html`, `room.html`, `frontend/`) und Backend sind getrennt gehostet: Das
+  Frontend läuft statisch über GitHub Pages, `server/server.js` ausschließlich als
+  Socket.IO-Backend über Render. Der Server liefert deshalb keine statischen Dateien mehr aus
+  (kein `express.static`, keine `GET /room/:roomCode`-Route) — das Docker-Image für Render
+  enthält bewusst nur `server/` (siehe `Dockerfile`/`.dockerignore`), `index.html`/`room.html`/
+  `frontend/` werden separat über GitHub Pages ausgeliefert. Da GitHub Pages kein serverseitiges
+  Routing kennt, liest `readRoomCodeFromUrl()` in `room.js` den Raumcode aus dem Query-Parameter
+  `?room=` statt aus dem URL-Pfad; `main.js` navigiert entsprechend zu `room.html?room=<roomCode>`.
+  Die Socket.IO-Verbindung (`frontend/js/socketClient.js`) und das `socket.io.js`-Client-Script in
   `index.html`/`room.html` zeigen fest codiert auf die Render-URL
   (`https://der-dummste-fliegt.onrender.com`, `SERVER_URL`-Konstante). Der Server erlaubt
-  Cross-Origin-Zugriffe nur von der GitHub-Pages-Origin (`FRONTEND_ORIGIN`-Umgebungsvariable in
-  `server.js`, Fallback `https://bread-005.github.io`, auf Render zusätzlich als Umgebungsvariable
-  zu setzen). Der Workflow `.github/workflows/deploy-pages.yml` führt `public/` und `frontend/`
-  bei jedem Push nach `main` zu einem gemeinsamen Verzeichnis zusammen (da `index.html`
-  `frontend/...` als Geschwisterordner referenziert) und deployt es über die GitHub-Pages-Actions
-  nach `https://bread-005.github.io/der-dummste-fliegt/`.
+  Cross-Origin-Zugriffe nur von den in der Socket.IO-`cors.origin`-Liste in `server.js` fest
+  eingetragenen Origins (`https://bread-005.github.io` sowie `http://localhost:63342`, aktuell
+  hartkodiert statt über eine Umgebungsvariable gesteuert), mit `methods: ["GET", "POST",
+  "OPTIONS"]` (Socket.IO braucht `POST` für seinen Polling-Transport) und eingeschränkten
+  `allowedHeaders`. Es gibt keinen Deploy-Workflow mehr: GitHub Pages ist direkt auf
+  "Deploy from branch: master / root" konfiguriert und liefert `index.html`, `room.html` und
+  `frontend/` (als Geschwisterordner referenziert) unverändert aus dem Repo-Root nach
+  `https://bread-005.github.io/der-dummste-fliegt/` aus. Lokal lässt sich dasselbe Frontend über
+  `docker compose up -d frontend` (nginx, mountet `index.html`, `room.html`, `frontend/` nach
+  `/usr/share/nginx/html`) unter `http://localhost:8080` testen, ohne
+  Server-Dateien wie `package.json` oder `server/` mit auszuliefern.
 - Da ein Seitenwechsel den Socket trennt, hat jeder Spieler eine stabile `idPlayer`
   (`crypto.randomUUID()`, persistiert in `sessionStorage`, siehe `frontend/js/playerIdentity.js`).
   Beim Wechsel Lobby → Raum verbindet sich ein neuer Socket und tritt mit derselben `idPlayer`
@@ -298,8 +303,13 @@
 
 - Punktevergabe/Statistiken über eine einzelne Partie hinaus.
 - Render-Service (`https://der-dummste-fliegt.onrender.com`) läuft bereits für `server/`, GitHub
-  Pages (`https://bread-005.github.io/der-dummste-fliegt/`) läuft bereits für `public/`/
-  `frontend/` (siehe Architektur-Abschnitt). Offen: die `FRONTEND_ORIGIN`-Umgebungsvariable muss
-  noch zusätzlich in Render selbst gesetzt werden (Wert `https://bread-005.github.io`, ohne
-  Pfad) — der Fallback in `server.js` deckt das nur ab, solange die Umgebungsvariable dort nicht
-  explizit gesetzt ist.
+  Pages (`https://bread-005.github.io/der-dummste-fliegt/`) läuft bereits für `index.html`/
+  `room.html`/`frontend/` (siehe Architektur-Abschnitt und Deployment-Abschnitt in `README.md`).
+  Render zieht dabei **kein** automatisches Deploy aus GitHub, sondern das manuell per
+  `docker buildx build --platform linux/amd64 -t bread005/der-dummste-fliegt:latest --push .`
+  gebaute und zu Docker Hub gepushte Image — Änderungen an `server/` werden auf Render erst nach
+  diesem Build+Push-Schritt und einem manuellen Redeploy in Render sichtbar, ein reiner
+  `git push` nach GitHub bewirkt nichts. Achtung, inkonsistent: Die aktuelle CORS-Origin-Liste in
+  `server.js` erlaubt `http://localhost:63342` (PhpStorms eingebauter Vorschau-Server), nicht aber
+  `http://localhost:8080` (der nginx-`frontend`-Service aus `docker-compose.yml`) — solange das
+  nicht angeglichen ist, schlägt eines der beiden lokalen Test-Setups mit einem CORS-Fehler fehl.

@@ -31,7 +31,6 @@ import {
 import {loadQuestions} from "./questionRepository.js";
 
 const portServer = process.env.PORT || 3000;
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "https://bread-005.github.io";
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
 const VOTING_DURATION_MS = 30000;
@@ -45,8 +44,10 @@ const application = express();
 const httpServer = createServer(application);
 const socketServer = new Server(httpServer, {
     cors: {
-        origin: frontendOrigin,
-    },
+        origin: ['http://localhost:63342', 'https://bread-005.github.io'],
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    }
 });
 
 /**
@@ -511,6 +512,6 @@ try {
     console.error("Fragen konnten nicht geladen werden:", error.message);
 }
 
-httpServer.listen(portServer, () => {
-    console.log(`Server läuft auf Port ${portServer}`);
+httpServer.listen(3050, "0.0.0.0", () => {
+    console.log("Access game on https://bread-005.github.io/der-dummste-fliegt/index.html");
 });
