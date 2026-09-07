@@ -4,6 +4,7 @@ const rooms = new Map();
 const DISCONNECT_GRACE_PERIOD_MS = 5000;
 const STARTING_LIVES = 1;
 const QUESTIONS_PER_PLAYER_PER_ROUND = 1;
+const MINIMUM_PLAYERS_TO_START = 3;
 const FINALE_QUESTION_COUNT = 5;
 
 /**
@@ -330,9 +331,20 @@ function isRoomHost(roomCode, idSocket) {
 }
 
 /**
+ * Checks whether a room currently has enough players to start a game.
+ * @param {string} roomCode - The code of the room.
+ * @returns {boolean} True if the room exists and has at least `MINIMUM_PLAYERS_TO_START` players.
+ */
+function hasEnoughPlayersToStart(roomCode) {
+    const room = rooms.get(roomCode);
+    return Boolean(room) && room.players.length >= MINIMUM_PLAYERS_TO_START;
+}
+
+/**
  * Starts a new game in a room: resets every player's lives, shuffles all available questions
  * once, and sets a random turn order over the room's current players. Only the room's host is
- * meant to trigger this (checked by the caller).
+ * meant to trigger this (checked by the caller); the caller must also check
+ * `hasEnoughPlayersToStart()` beforehand, as this function does not enforce the minimum itself.
  * @param {string} roomCode - The code of the room.
  * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|null} The
  *   first turn, or null if the room does not exist or no questions are available.
@@ -902,6 +914,7 @@ export {
     leaveRoom,
     scheduleRemovalOnDisconnect,
     isRoomHost,
+    hasEnoughPlayersToStart,
     startGame,
     startNextRound,
     isCurrentPlayerSocket,

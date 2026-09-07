@@ -1,6 +1,8 @@
 import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
 
+const MINIMUM_PLAYERS_TO_START = 3;
+
 const elementRoomScreen = document.getElementById("roomScreen");
 const elementGameScreen = document.getElementById("gameScreen");
 const buttonStartGame = document.getElementById("buttonStartGame");
@@ -200,7 +202,7 @@ function renderDeadPlayers(deadPlayers) {
 /**
  * Renders the in-game player list from the latest known state, splitting players into the alive
  * player list and the dead-players box, and shows the "Spiel starten" button only to the host
- * while no game is running.
+ * while no game is running and at least `MINIMUM_PLAYERS_TO_START` players are in the room.
  * @param {string} idOwnPlayer - The persistent id of the player viewing this page.
  */
 function renderPlayerLists(idOwnPlayer) {
@@ -216,7 +218,8 @@ function renderPlayerLists(idOwnPlayer) {
     }
 
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
-    buttonStartGame.hidden = !ownPlayer?.isHost;
+    const hasEnoughPlayers = currentPlayers.length >= MINIMUM_PLAYERS_TO_START;
+    buttonStartGame.hidden = !ownPlayer?.isHost || !hasEnoughPlayers;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
     leaveRoom,
     scheduleRemovalOnDisconnect,
     isRoomHost,
+    hasEnoughPlayersToStart,
     startGame,
     startNextRound,
     isCurrentPlayerSocket,
@@ -440,6 +441,13 @@ socketServer.on("connection", (socket) => {
 
     socket.on("startGame", ({roomCode}) => {
         if (!isRoomHost(roomCode, socket.id)) {
+            return;
+        }
+
+        if (!hasEnoughPlayersToStart(roomCode)) {
+            socket.emit("gameErrorMessage", {
+                message: "Das Spiel kann erst mit mindestens 3 Spielern gestartet werden.",
+            });
             return;
         }
 
