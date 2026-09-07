@@ -143,11 +143,10 @@ function scheduleVotingTimeout(roomCode) {
 }
 
 /**
- * Resolves the voting round (auto-voting anyone who has not voted for themselves). If exactly two
- * players are now alive, skips the voting-result display entirely and starts the finale right
- * away; otherwise broadcasts the outcome together with a result-display timer, then, once that
- * timer runs out, either starts the next normal round or ends the game (if fewer than two players
- * are left alive).
+ * Resolves the voting round (auto-voting anyone who has not voted for themselves), then broadcasts
+ * the outcome together with a result-display timer. Once that timer runs out, starts the finale (if
+ * exactly two players are now alive), starts the next normal round (if more are left), or ends the
+ * game (if fewer than two players are left alive).
  * @param {string} roomCode - The code of the room.
  */
 function finishVoting(roomCode) {
@@ -161,12 +160,6 @@ function finishVoting(roomCode) {
     }
 
     const aliveCount = countAlivePlayers(roomCode);
-
-    if (aliveCount === 2) {
-        handleFinaleAdvanceResult(roomCode, startFinale(roomCode));
-        return;
-    }
-
     const payload = {
         ...result,
         resultDurationMs: VOTING_RESULT_DURATION_MS,
@@ -177,7 +170,9 @@ function finishVoting(roomCode) {
     socketServer.to(roomCode).emit("votingResolved", payload);
 
     const resultTimeoutHandle = setTimeout(() => {
-        if (aliveCount < 2) {
+        if (aliveCount === 2) {
+            handleFinaleAdvanceResult(roomCode, startFinale(roomCode));
+        } else if (aliveCount < 2) {
             stopGameIfActive(roomCode);
         } else {
             handleTurnResult(roomCode, startNextRound(roomCode));
