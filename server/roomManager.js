@@ -878,6 +878,24 @@ function advanceFinaleQuestion(roomCode) {
 }
 
 /**
+ * Revives every player in a room back to `STARTING_LIVES`, e.g. once the finale is over and the
+ * players eliminated during the normal rounds should no longer show up as dead on the finale
+ * result screen or in a subsequently restarted game.
+ * @param {string} roomCode - The code of the room.
+ */
+function revivePlayersAfterFinale(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room) {
+        return;
+    }
+
+    room.players.forEach((player) => {
+        player.lives = STARTING_LIVES;
+    });
+}
+
+/**
  * Finds the code of the room a socket currently belongs to, without modifying anything.
  * @param {string} idSocket - The socket id to search for.
  * @returns {string|null} The room code, or null if the socket belongs to no room.
@@ -916,6 +934,7 @@ export {
     isRoomHost,
     hasEnoughPlayersToStart,
     startGame,
+    revivePlayersAfterFinale,
     startNextRound,
     isCurrentPlayerSocket,
     advanceTurn,

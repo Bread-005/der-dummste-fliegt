@@ -9,6 +9,7 @@ import {
     isRoomHost,
     hasEnoughPlayersToStart,
     startGame,
+    revivePlayersAfterFinale,
     startNextRound,
     isCurrentPlayerSocket,
     advanceTurn,
@@ -272,9 +273,11 @@ function handleFinaleAdvanceResult(roomCode, result) {
 }
 
 /**
- * Broadcasts the finale outcome (winner, or a tie). The game then simply waits on this screen —
- * after a short delay the host gets a button to start a fresh game (`startGame`), the same event
- * used to start the very first game; there is no automatic timeout back to the waiting room.
+ * Broadcasts the finale outcome (winner, or a tie). Revives every player back to full lives first,
+ * so nobody eliminated during the normal rounds still shows up as dead on the result screen or in a
+ * subsequently restarted game. The game then simply waits on this screen — after a short delay the
+ * host gets a button to start a fresh game (`startGame`), the same event used to start the very
+ * first game; there is no automatic timeout back to the waiting room.
  * @param {string} roomCode - The code of the room.
  * @param {{idWinner: string|null, correctCounts: Object<string, number>}} result - The finale
  *   outcome returned by `advanceFinaleQuestion()`.
@@ -282,6 +285,8 @@ function handleFinaleAdvanceResult(roomCode, result) {
 function finishFinale(roomCode, result) {
     clearTimeout(turnTimeouts.get(roomCode));
     turnTimeouts.delete(roomCode);
+
+    revivePlayersAfterFinale(roomCode);
 
     const payload = {
         idWinner: result.idWinner,
