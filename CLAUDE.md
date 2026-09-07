@@ -98,8 +98,8 @@
   `readRoomCodeFromUrl()` in `room.js` den Raumcode aus dem Query-Parameter `?room=` statt aus
   dem URL-Pfad; `main.js` navigiert entsprechend zu `room.html?room=<roomCode>`. Die
   Socket.IO-Verbindung (`frontend/js/socketClient.js`) und das `socket.io.js`-Client-Script in
-  `index.html`/`room.html` zeigen fest codiert auf die Render-URL (`SERVER_URL`-Konstante bzw.
-  `REPLACE_WITH_RENDER_URL`-Platzhalter, nach dem ersten Deploy einzutragen). Der Server erlaubt
+  `index.html`/`room.html` zeigen fest codiert auf die Render-URL
+  (`https://der-dummste-fliegt.onrender.com`, `SERVER_URL`-Konstante). Der Server erlaubt
   Cross-Origin-Zugriffe nur von der GitHub-Pages-Origin (`FRONTEND_ORIGIN`-Umgebungsvariable in
   `server.js`, auf Render zu setzen).
 - Da ein Seitenwechsel den Socket trennt, hat jeder Spieler eine stabile `idPlayer`
@@ -293,7 +293,8 @@
 ## Nächste Schritte (fachlich offen)
 
 - Punktevergabe/Statistiken über eine einzelne Partie hinaus.
-- GitHub-Repository anlegen, GitHub Pages für `public/`/`frontend/` einrichten und Render-Service
-  für `server/` aufsetzen; danach `REPLACE_WITH_RENDER_URL`- und
-  `REPLACE_WITH_GITHUB_PAGES_URL`-Platzhalter (siehe Architektur-Abschnitt) durch die
-  tatsächlichen URLs ersetzen.
+- Render-Service (`https://der-dummste-fliegt.onrender.com`) läuft bereits für `server/`.
+  GitHub-Repository anlegen, GitHub Pages für `public/`/`frontend/` einrichten und die
+  `FRONTEND_ORIGIN`-Umgebungsvariable in Render mit der tatsächlichen GitHub-Pages-URL
+  belegen (Platzhalter `REPLACE_WITH_GITHUB_PAGES_URL` in `server.js`, siehe
+  Architektur-Abschnitt).

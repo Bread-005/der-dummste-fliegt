@@ -1,5 +1,4 @@
-// TODO: Nach dem ersten Render-Deploy die tatsächliche Service-URL eintragen.
-const SERVER_URL = "https://REPLACE_WITH_RENDER_URL.onrender.com";
+const SERVER_URL = "https://der-dummste-fliegt.onrender.com";
 
 /**
  * Establishes the Socket.IO connection to the game server.
