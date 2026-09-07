@@ -62,7 +62,10 @@ function hasAnsweredAllCorrectlyThisRound(room, idPlayer) {
 /**
  * Orders a room's players by the game's turn order once a game is running, so clients can display
  * them in the same left-to-right order in which they take their turns. Falls back to join order
- * while no game is active.
+ * while no game is active. A player who joins mid-game is added to `room.players` but is not part
+ * of `room.game.playerOrder` until the next round reshuffles it (they take no turns as a dead
+ * spectator in the meantime, see `joinRoom()`), so such players are appended afterwards in join
+ * order instead of being silently dropped from the display.
  * @param {object} room - The internal room record.
  * @returns {Array<object>} The room's internal player records, ordered for display.
  */
@@ -71,9 +74,13 @@ function orderPlayersForDisplay(room) {
         return room.players;
     }
 
-    return room.game.playerOrder
+    const playersInTurnOrder = room.game.playerOrder
         .map((idPlayer) => room.players.find((player) => player.idPlayer === idPlayer))
         .filter(Boolean);
+
+    const playersJoinedMidGame = room.players.filter((player) => !room.game.playerOrder.includes(player.idPlayer));
+
+    return [...playersInTurnOrder, ...playersJoinedMidGame];
 }
 
 /**
@@ -172,24 +179,32 @@ function findByIdSocket(idSocket) {
  * Removes a player from a room, deletes the room if it becomes empty, and hands the host crown to
  * an arbitrary remaining player if the removed player was the host. If a game is running, it is
  * never stopped by this removal alone (the caller decides how to resync it); votes cast for the
- * removed player are cleared instead, so their voters count as not having voted yet.
+ * removed player are cleared instead, so their voters count as not having voted yet. The same
+ * applies to a running tiebreak's outside votes. If the removed player was one of the two tiebreak
+ * candidates, the tiebreak cannot be completed anymore and is abandoned outright (`room.game.phase`
+ * reverts to `"voting"`), leaving it to the caller to resolve the round with nobody losing a life
+ * for it, exactly as a fully-tied vote would.
  * @param {string} roomCode - The code of the room.
  * @param {object} room - The internal room record.
  * @param {string} idPlayer - The persistent id of the player to remove.
- * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|null)}} Whether
- *   the removed player was the one currently up in the question phase, and which phase the game
- *   was in at the moment of removal (null if no game was running).
+ * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean}}
+ *   Whether the removed player was the one currently up in the question phase, which phase the
+ *   game was in at the moment of removal (null if no game was running), and whether the removed
+ *   player was one of the two active tiebreak candidates.
  */
 function removePlayerFromRoom(roomCode, room, idPlayer) {
     const phaseAtRemoval = room.game?.phase ?? null;
     const wasCurrentQuestionTurn =
         phaseAtRemoval === "question" && getCurrentTurn(room)?.idCurrentPlayer === idPlayer;
+    const wasTiebreakCandidate =
+        (phaseAtRemoval === "tiebreakQuestion" || phaseAtRemoval === "tiebreakVoting") &&
+        Boolean(room.game.tiebreak.idPlayers.includes(idPlayer));
 
     room.players = room.players.filter((player) => player.idPlayer !== idPlayer);
 
     if (room.players.length === 0) {
         rooms.delete(roomCode);
-        return {wasCurrentQuestionTurn: false, phaseAtRemoval: null};
+        return {wasCurrentQuestionTurn: false, phaseAtRemoval: null, wasTiebreakCandidate: false};
     }
 
     if (room.idHost === idPlayer) {
@@ -206,7 +221,16 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
         }
     }
 
-    return {wasCurrentQuestionTurn, phaseAtRemoval};
+    if (phaseAtRemoval === "tiebreakVoting" && !wasTiebreakCandidate) {
+        delete room.game.tiebreak.votes[idPlayer];
+    }
+
+    if (wasTiebreakCandidate) {
+        room.game.phase = "voting";
+        delete room.game.tiebreak;
+    }
+
+    return {wasCurrentQuestionTurn, phaseAtRemoval, wasTiebreakCandidate};
 }
 
 /**
@@ -636,17 +660,21 @@ function haveAllPlayersVoted(roomCode) {
 
 /**
  * Resolves the voting round: any alive player who has not voted yet (e.g. after the voting
- * timeout) automatically votes for themselves, then every alive player tied for the most votes
- * received loses one life (down to a minimum of zero). Dead players neither vote nor can be voted
- * for. Votes for a player who answered every question of the round correctly (including such a
- * player's own fallback self-vote) are excluded from the count, so that player cannot lose a life
- * this round.
+ * timeout) automatically votes for themselves, then the vote is tallied. Dead players neither vote
+ * nor can be voted for. Votes for a player who answered every question of the round correctly
+ * (including such a player's own fallback self-vote) are excluded from the count, so that player
+ * cannot lose a life this round. Depending on how many players are tied for the most votes:
+ * - exactly one: that player loses one life (down to a minimum of zero);
+ * - exactly two: neither loses a life yet — the caller must start a tiebreak between them instead
+ *   (see `startTiebreakQuestion()`);
+ * - three or more, or nobody received a countable vote at all: the tie spans too much of the field
+ *   to single a group out, so nobody loses a life.
  * @param {string} roomCode - The code of the room.
- * @returns {{votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}|null}
- *   The resolved votes, who lost a life, and the updated public player list, or null if the room
- *   has no active game.
+ * @returns {{type: "tiebreak", idPlayers: string[]}|{type: "resolved", votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}|null}
+ *   Either a marker that a two-way tiebreak must be started, or the resolved votes, who lost a
+ *   life, and the updated public player list — or null if the room has no active game.
  */
-function resolveVotes(roomCode) {
+function resolveVotingPhase(roomCode) {
     const room = rooms.get(roomCode);
 
     if (!room || !room.game) {
@@ -673,10 +701,19 @@ function resolveVotes(roomCode) {
         voteCounts[idVotedFor] = (voteCounts[idVotedFor] ?? 0) + 1;
     });
 
+    const votes = alivePlayers.map((player) => ({
+        idVoter: player.idPlayer,
+        idVotedFor: room.game.votes[player.idPlayer],
+    }));
+
     const highestVoteCount = Object.values(voteCounts).length > 0 ? Math.max(...Object.values(voteCounts)) : 0;
-    const idPlayersLosingLife = Object.keys(voteCounts).filter(
-        (idPlayer) => voteCounts[idPlayer] === highestVoteCount,
-    );
+    const idPlayersAtTop = Object.keys(voteCounts).filter((idPlayer) => voteCounts[idPlayer] === highestVoteCount);
+
+    if (idPlayersAtTop.length === 2) {
+        return {type: "tiebreak", idPlayers: idPlayersAtTop};
+    }
+
+    const idPlayersLosingLife = idPlayersAtTop.length >= 3 ? [] : idPlayersAtTop;
 
     idPlayersLosingLife.forEach((idPlayer) => {
         const player = room.players.find((candidate) => candidate.idPlayer === idPlayer);
@@ -686,12 +723,271 @@ function resolveVotes(roomCode) {
         }
     });
 
-    const votes = alivePlayers.map((player) => ({
-        idVoter: player.idPlayer,
-        idVotedFor: room.game.votes[player.idPlayer],
-    }));
+    return {type: "resolved", votes, idPlayersLosingLife, players: toPublicPlayers(room)};
+}
 
-    return {votes, idPlayersLosingLife, players: toPublicPlayers(room)};
+/**
+ * Builds the public representation of a room's currently running tiebreak question.
+ * @param {object} room - The internal room record.
+ * @returns {{question: {text: string}, idPlayers: string[], players: Array<object>}} The current
+ *   tiebreak question turn.
+ */
+function buildTiebreakQuestionTurn(room) {
+    return {
+        question: {text: room.game.tiebreak.question.text},
+        idPlayers: room.game.tiebreak.idPlayers,
+        players: toPublicPlayers(room),
+    };
+}
+
+/**
+ * Starts a tiebreak question between exactly two players tied for the most votes in a voting
+ * round, drawing the next question from the same shuffled pool a normal turn would use. Also used
+ * to start a repeat tiebreak question after a tiebreak re-vote is itself still tied.
+ * @param {string} roomCode - The code of the room.
+ * @param {string[]} idPlayers - The two persistent ids of the tied players.
+ * @returns {{question: {text: string}, idPlayers: string[], players: Array<object>}|null} The
+ *   tiebreak question turn, or null if the room has no active game or no question is available.
+ */
+function startTiebreakQuestion(roomCode, idPlayers) {
+    const room = rooms.get(roomCode);
+    const question = room?.game?.shuffledQuestions[room.game.indexQuestion];
+
+    if (!room || !room.game || !question) {
+        return null;
+    }
+
+    room.game.phase = "tiebreakQuestion";
+    room.game.tiebreak = {idPlayers, question, answers: {}, wasCorrect: {}, votes: {}};
+
+    return buildTiebreakQuestionTurn(room);
+}
+
+/**
+ * Registers one of the two tiebreak candidates' answer for the current tiebreak question. Ignored
+ * outside the tiebreak-question phase, for a player who is not one of the two candidates, or if
+ * that player already answered this question.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} idPlayer - The persistent id of the answering player.
+ * @param {string} answerText - The answer text given.
+ * @returns {boolean} True if the answer was accepted.
+ */
+function submitTiebreakAnswer(roomCode, idPlayer, answerText) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakQuestion") {
+        return false;
+    }
+
+    const tiebreak = room.game.tiebreak;
+
+    if (!tiebreak.idPlayers.includes(idPlayer) || tiebreak.answers[idPlayer] !== undefined) {
+        return false;
+    }
+
+    tiebreak.answers[idPlayer] = answerText;
+    return true;
+}
+
+/**
+ * Checks whether both tiebreak candidates have answered the current tiebreak question.
+ * @param {string} roomCode - The code of the room.
+ * @returns {boolean} True if both candidates have submitted an answer.
+ */
+function haveBothTiebreakPlayersAnswered(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakQuestion") {
+        return false;
+    }
+
+    return room.game.tiebreak.idPlayers.every((idPlayer) => room.game.tiebreak.answers[idPlayer] !== undefined);
+}
+
+/**
+ * Resolves the current tiebreak question: fills in a placeholder answer for whichever candidate
+ * did not answer in time and compares both answers against the correct one. A candidate who
+ * answered correctly is recorded as immune from the re-vote that follows (`tiebreak.wasCorrect`,
+ * checked by `submitTiebreakVote()`) — answering right is this question's only way for a candidate
+ * to protect themselves, exactly like answering every question right protects a player from normal
+ * voting. Advances the shared question pool exactly like a normal turn's answer would, reshuffling
+ * once every question has been asked. Must be called before `startTiebreakVoting()`.
+ * @param {string} roomCode - The code of the room.
+ * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[]}|null}
+ *   The reveal info, or null if the room has no active tiebreak question.
+ */
+function resolveTiebreakQuestion(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakQuestion") {
+        return null;
+    }
+
+    const tiebreak = room.game.tiebreak;
+    const question = tiebreak.question;
+
+    const answers = tiebreak.idPlayers.map((idPlayer) => {
+        const answerText = tiebreak.answers[idPlayer] ?? "(keine Antwort)";
+        const isCorrect = normalizeAnswerText(answerText) === normalizeAnswerText(question.answer);
+        const player = room.players.find((candidate) => candidate.idPlayer === idPlayer);
+
+        tiebreak.wasCorrect[idPlayer] = isCorrect;
+
+        return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
+    });
+
+    room.game.indexQuestion += 1;
+
+    if (room.game.indexQuestion >= room.game.shuffledQuestions.length) {
+        room.game.shuffledQuestions = shuffleArray(getAllQuestions());
+        room.game.indexQuestion = 0;
+    }
+
+    return {questionText: question.text, correctAnswer: question.answer, answers, idPlayers: tiebreak.idPlayers};
+}
+
+/**
+ * Switches a running tiebreak from its question to its re-vote: only alive players who are not one
+ * of the two tiebreak candidates may cast a vote (see `submitTiebreakVote()`). Must be called after
+ * `resolveTiebreakQuestion()`.
+ * @param {string} roomCode - The code of the room.
+ * @returns {{idPlayers: string[], players: Array<object>}|null} The tiebreak's candidate ids and
+ *   the updated public player list, or null if the room has no active tiebreak question.
+ */
+function startTiebreakVoting(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakQuestion") {
+        return null;
+    }
+
+    room.game.phase = "tiebreakVoting";
+    room.game.tiebreak.votes = {};
+
+    return {idPlayers: room.game.tiebreak.idPlayers, players: toPublicPlayers(room)};
+}
+
+/**
+ * Registers an outside player's vote for which of the two tiebreak candidates should lose a life.
+ * Ignored outside the tiebreak-voting phase, for a voter who is dead, no longer in the room, or is
+ * one of the two candidates themselves (only outside players may break the tie), for a vote that
+ * does not target one of the two candidates, targets a candidate who answered the current tiebreak
+ * question correctly (`tiebreak.wasCorrect`, set by `resolveTiebreakQuestion()` — a correct answer
+ * is this question's own way of earning immunity from this particular re-vote, separate from and
+ * in addition to the normal round's "answered everything correctly" immunity, which is also
+ * checked here for defense in depth even though a tiebreak candidate cannot normally hold it — see
+ * `resolveVotingPhase()`), or if the voter already voted this tiebreak round.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} idVoter - The persistent id of the voting player.
+ * @param {string} idVotedFor - The persistent id of the candidate being voted for.
+ * @returns {boolean} True if the vote was accepted.
+ */
+function submitTiebreakVote(roomCode, idVoter, idVotedFor) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakVoting" || room.game.tiebreak.votes[idVoter]) {
+        return false;
+    }
+
+    const tiebreak = room.game.tiebreak;
+
+    if (tiebreak.idPlayers.includes(idVoter) || !tiebreak.idPlayers.includes(idVotedFor)) {
+        return false;
+    }
+
+    if (tiebreak.wasCorrect[idVotedFor] || hasAnsweredAllCorrectlyThisRound(room, idVotedFor)) {
+        return false;
+    }
+
+    const voterStillAlive = room.players.some((player) => player.idPlayer === idVoter && isPlayerAlive(player));
+
+    if (!voterStillAlive) {
+        return false;
+    }
+
+    tiebreak.votes[idVoter] = idVotedFor;
+    return true;
+}
+
+/**
+ * Checks whether every alive player outside the tiebreak (i.e. every player allowed to vote in it)
+ * has cast their tiebreak vote. True immediately if no such outside player exists.
+ * @param {string} roomCode - The code of the room.
+ * @returns {boolean} True if every eligible outside voter has voted.
+ */
+function haveAllTiebreakVotersVoted(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakVoting") {
+        return false;
+    }
+
+    const outsideVoters = room.players.filter(
+        (player) => isPlayerAlive(player) && !room.game.tiebreak.idPlayers.includes(player.idPlayer),
+    );
+
+    return outsideVoters.every((player) => Boolean(room.game.tiebreak.votes[player.idPlayer]));
+}
+
+/**
+ * Resolves a tiebreak re-vote: whichever of the two candidates received more votes from outside
+ * players loses one life (down to a minimum of zero) and the tiebreak ends. If the outside vote is
+ * itself tied (including nobody having been able to vote at all, e.g. only the two candidates are
+ * left alive), the tiebreak is either abandoned with nobody losing a life (no outside voters at
+ * all) or must repeat with another tiebreak question (`startTiebreakQuestion()` again with the same
+ * two candidates). Restores `room.game.phase` back to `"voting"` once the tiebreak concludes, so
+ * the room ends up in the same phase a normal, non-tied vote would have left it in.
+ * @param {string} roomCode - The code of the room.
+ * @returns {{type: "stillTied", idPlayers: string[]}|{type: "resolved", votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}|null}
+ *   Either a marker that another tiebreak question must be started, or the resolved outcome, or
+ *   null if the room has no active tiebreak vote.
+ */
+function resolveTiebreakVoting(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game || room.game.phase !== "tiebreakVoting") {
+        return null;
+    }
+
+    const tiebreak = room.game.tiebreak;
+    const outsideVoters = room.players.filter(
+        (player) => isPlayerAlive(player) && !tiebreak.idPlayers.includes(player.idPlayer),
+    );
+
+    const votes = outsideVoters
+        .filter((player) => Boolean(tiebreak.votes[player.idPlayer]))
+        .map((player) => ({idVoter: player.idPlayer, idVotedFor: tiebreak.votes[player.idPlayer]}));
+
+    const voteCounts = {};
+    votes.forEach((vote) => {
+        voteCounts[vote.idVotedFor] = (voteCounts[vote.idVotedFor] ?? 0) + 1;
+    });
+
+    const [idFirstCandidate, idSecondCandidate] = tiebreak.idPlayers;
+    const firstCandidateVotes = voteCounts[idFirstCandidate] ?? 0;
+    const secondCandidateVotes = voteCounts[idSecondCandidate] ?? 0;
+
+    if (outsideVoters.length === 0) {
+        room.game.phase = "voting";
+        delete room.game.tiebreak;
+        return {type: "resolved", votes: [], idPlayersLosingLife: [], players: toPublicPlayers(room)};
+    }
+
+    if (firstCandidateVotes === secondCandidateVotes) {
+        return {type: "stillTied", idPlayers: tiebreak.idPlayers};
+    }
+
+    const idPlayerLosingLife = firstCandidateVotes > secondCandidateVotes ? idFirstCandidate : idSecondCandidate;
+    const player = room.players.find((candidate) => candidate.idPlayer === idPlayerLosingLife);
+
+    if (player) {
+        player.lives = Math.max(0, player.lives - 1);
+    }
+
+    room.game.phase = "voting";
+    delete room.game.tiebreak;
+
+    return {type: "resolved", votes, idPlayersLosingLife: [idPlayerLosingLife], players: toPublicPlayers(room)};
 }
 
 /**
@@ -944,7 +1240,15 @@ export {
     getPlayerIdForSocket,
     submitVote,
     haveAllPlayersVoted,
-    resolveVotes,
+    resolveVotingPhase,
+    startTiebreakQuestion,
+    submitTiebreakAnswer,
+    haveBothTiebreakPlayersAnswered,
+    resolveTiebreakQuestion,
+    startTiebreakVoting,
+    submitTiebreakVote,
+    haveAllTiebreakVotersVoted,
+    resolveTiebreakVoting,
     getRoomCodeForSocket,
     getPublicPlayers,
     isGameActive,

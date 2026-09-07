@@ -19,7 +19,15 @@ import {
     getPlayerIdForSocket,
     submitVote,
     haveAllPlayersVoted,
-    resolveVotes,
+    resolveVotingPhase,
+    startTiebreakQuestion,
+    submitTiebreakAnswer,
+    haveBothTiebreakPlayersAnswered,
+    resolveTiebreakQuestion,
+    startTiebreakVoting,
+    submitTiebreakVote,
+    haveAllTiebreakVotersVoted,
+    resolveTiebreakVoting,
     getPublicPlayers,
     isGameActive,
     stopGame,
@@ -36,6 +44,7 @@ const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
 const VOTING_DURATION_MS = 30000;
 const VOTING_RESULT_DURATION_MS = 15000;
+const TIEBREAK_VOTING_DURATION_MS = 10000;
 const FINALE_DURATION_MS = 30000;
 const FINALE_RESULT_DURATION_MS = 5000;
 const turnTimeouts = new Map();
@@ -57,7 +66,8 @@ const socketServer = new Server(httpServer, {
  * current phase instead of only seeing the empty waiting room.
  * @param {string} roomCode - The code of the room.
  * @param {string} type - The event name this state corresponds to ("turnStarted", "answerRevealed",
- *   "votingStarted", or "votingResolved").
+ *   "votingStarted", "votingResolved", "tiebreakStarted", "tiebreakAnswerRevealed",
+ *   "tiebreakVotingStarted", "finaleStarted", "finaleAnswerRevealed", or "finaleResolved").
  * @param {object} payload - The event payload as it was broadcast.
  */
 function setGameDisplayState(roomCode, type, payload) {
@@ -144,22 +154,40 @@ function scheduleVotingTimeout(roomCode) {
 }
 
 /**
- * Resolves the voting round (auto-voting anyone who has not voted for themselves), then broadcasts
- * the outcome together with a result-display timer. Once that timer runs out, starts the finale (if
- * exactly two players are now alive), starts the next normal round (if more are left), or ends the
- * game (if fewer than two players are left alive).
+ * Resolves the voting round (auto-voting anyone who has not voted for themselves). Two players tied
+ * for the most votes cannot be resolved directly — a tiebreak between exactly those two is started
+ * instead (see `startTiebreakRound()`); any other outcome (a single top-voted player, or three or
+ * more tied) is finalized right away via `finalizeVotingResolution()`.
  * @param {string} roomCode - The code of the room.
  */
 function finishVoting(roomCode) {
     clearTimeout(turnTimeouts.get(roomCode));
 
-    const result = resolveVotes(roomCode);
+    const result = resolveVotingPhase(roomCode);
 
     if (!result) {
         turnTimeouts.delete(roomCode);
         return;
     }
 
+    if (result.type === "tiebreak") {
+        startTiebreakRound(roomCode, result.idPlayers);
+        return;
+    }
+
+    finalizeVotingResolution(roomCode, result);
+}
+
+/**
+ * Broadcasts a resolved voting round's outcome together with a result-display timer. Once that
+ * timer runs out, starts the finale (if exactly two players are now alive), starts the next normal
+ * round (if more are left), or ends the game (if fewer than two players are left alive). Used both
+ * for a directly resolved vote and for one decided by a tiebreak re-vote.
+ * @param {string} roomCode - The code of the room.
+ * @param {{votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}} result -
+ *   The resolved outcome, from `resolveVotingPhase()` or `resolveTiebreakVoting()`.
+ */
+function finalizeVotingResolution(roomCode, result) {
     const aliveCount = countAlivePlayers(roomCode);
     const payload = {
         ...result,
@@ -181,6 +209,120 @@ function finishVoting(roomCode) {
     }, VOTING_RESULT_DURATION_MS);
 
     turnTimeouts.set(roomCode, resultTimeoutHandle);
+}
+
+/**
+ * Starts (or restarts, after a still-tied tiebreak re-vote) a tiebreak question between exactly two
+ * players tied for the most votes, and schedules its timeout.
+ * @param {string} roomCode - The code of the room.
+ * @param {string[]} idPlayers - The two persistent ids of the tied players.
+ */
+function startTiebreakRound(roomCode, idPlayers) {
+    const turn = startTiebreakQuestion(roomCode, idPlayers);
+
+    if (!turn) {
+        stopGameIfActive(roomCode);
+        return;
+    }
+
+    const payload = {
+        question: turn.question,
+        idPlayers: turn.idPlayers,
+        players: turn.players,
+        tiebreakDurationMs: TURN_DURATION_MS,
+        tiebreakStartedAt: Date.now(),
+    };
+
+    setGameDisplayState(roomCode, "tiebreakStarted", payload);
+    socketServer.to(roomCode).emit("tiebreakStarted", payload);
+
+    clearTimeout(turnTimeouts.get(roomCode));
+    const timeoutHandle = setTimeout(() => {
+        revealTiebreakAnswerAndAdvance(roomCode);
+    }, TURN_DURATION_MS);
+
+    turnTimeouts.set(roomCode, timeoutHandle);
+}
+
+/**
+ * Reveals both tiebreak candidates' answers (filling in a placeholder for whoever did not answer in
+ * time) together with the correct answer, then, after a short delay, switches to the tiebreak
+ * re-vote.
+ * @param {string} roomCode - The code of the room.
+ */
+function revealTiebreakAnswerAndAdvance(roomCode) {
+    clearTimeout(turnTimeouts.get(roomCode));
+
+    const reveal = resolveTiebreakQuestion(roomCode);
+
+    if (!reveal) {
+        turnTimeouts.delete(roomCode);
+        return;
+    }
+
+    setGameDisplayState(roomCode, "tiebreakAnswerRevealed", reveal);
+    socketServer.to(roomCode).emit("tiebreakAnswerRevealed", reveal);
+
+    const revealTimeoutHandle = setTimeout(() => {
+        startTiebreakVotingRound(roomCode);
+    }, REVEAL_DURATION_MS);
+
+    turnTimeouts.set(roomCode, revealTimeoutHandle);
+}
+
+/**
+ * Broadcasts the start of a tiebreak re-vote (only alive players outside the tiebreak may vote) and
+ * schedules its timeout.
+ * @param {string} roomCode - The code of the room.
+ */
+function startTiebreakVotingRound(roomCode) {
+    const turn = startTiebreakVoting(roomCode);
+
+    if (!turn) {
+        stopGameIfActive(roomCode);
+        return;
+    }
+
+    const payload = {
+        idPlayers: turn.idPlayers,
+        players: turn.players,
+        tiebreakVotingDurationMs: TIEBREAK_VOTING_DURATION_MS,
+        tiebreakVotingStartedAt: Date.now(),
+    };
+
+    setGameDisplayState(roomCode, "tiebreakVotingStarted", payload);
+    socketServer.to(roomCode).emit("tiebreakVotingStarted", payload);
+
+    clearTimeout(turnTimeouts.get(roomCode));
+    const timeoutHandle = setTimeout(() => {
+        finishTiebreakVoting(roomCode);
+    }, TIEBREAK_VOTING_DURATION_MS);
+
+    turnTimeouts.set(roomCode, timeoutHandle);
+}
+
+/**
+ * Resolves a tiebreak re-vote: either it is still tied and another tiebreak question starts between
+ * the same two candidates, or it is decisive and the round is finalized exactly like a directly
+ * resolved vote would be.
+ * @param {string} roomCode - The code of the room.
+ */
+function finishTiebreakVoting(roomCode) {
+    clearTimeout(turnTimeouts.get(roomCode));
+
+    const result = resolveTiebreakVoting(roomCode);
+
+    if (!result) {
+        turnTimeouts.delete(roomCode);
+        return;
+    }
+
+    if (result.type === "stillTied") {
+        startTiebreakRound(roomCode, result.idPlayers);
+        return;
+    }
+
+    finalizeVotingResolution(roomCode, result);
 }
 
 /**
@@ -377,9 +519,11 @@ function stopGameIfActive(roomCode) {
  * revealed, or while a voting result is already being displayed, is left alone — the
  * already-scheduled timeout for that phase moves things along on its own once it runs out. The
  * finale strictly requires exactly two players, so removing either finalist at any point simply
- * ends the game.
+ * ends the game. A tiebreak strictly requires its two candidates; removing either of them abandons
+ * the tiebreak and resolves the round immediately with nobody losing a life for it (like a fully
+ * tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has now cast.
  * @param {string} roomCode - The code of the room.
- * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"finale"|null)}|undefined} removalEffect -
+ * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean}|undefined} removalEffect -
  *   The removal effect returned by `leaveRoom()`/`scheduleRemovalOnDisconnect()`.
  */
 function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
@@ -389,6 +533,16 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
 
     if (removalEffect.phaseAtRemoval === "finale") {
         stopGameIfActive(roomCode);
+        return;
+    }
+
+    if (removalEffect.wasTiebreakCandidate) {
+        clearTimeout(turnTimeouts.get(roomCode));
+        finalizeVotingResolution(roomCode, {
+            votes: [],
+            idPlayersLosingLife: [],
+            players: getPublicPlayers(roomCode),
+        });
         return;
     }
 
@@ -415,6 +569,15 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
 
     if (isMidActiveVoting && haveAllPlayersVoted(roomCode)) {
         finishVoting(roomCode);
+        return;
+    }
+
+    const isMidActiveTiebreakVoting =
+        removalEffect.phaseAtRemoval === "tiebreakVoting" &&
+        gameDisplayStates.get(roomCode)?.type === "tiebreakVotingStarted";
+
+    if (isMidActiveTiebreakVoting && haveAllTiebreakVotersVoted(roomCode)) {
+        finishTiebreakVoting(roomCode);
     }
 }
 
@@ -493,6 +656,31 @@ socketServer.on("connection", (socket) => {
 
         if (haveAllPlayersVoted(roomCode)) {
             finishVoting(roomCode);
+        }
+    });
+
+    socket.on("submitTiebreakAnswer", ({roomCode, answerText}) => {
+        const idPlayer = getPlayerIdForSocket(socket.id);
+        const trimmedAnswer = (answerText ?? "").trim();
+
+        if (!idPlayer || !submitTiebreakAnswer(roomCode, idPlayer, trimmedAnswer || "(keine Antwort)")) {
+            return;
+        }
+
+        if (haveBothTiebreakPlayersAnswered(roomCode)) {
+            revealTiebreakAnswerAndAdvance(roomCode);
+        }
+    });
+
+    socket.on("submitTiebreakVote", ({roomCode, idVotedFor}) => {
+        const idVoter = getPlayerIdForSocket(socket.id);
+
+        if (!idVoter || !submitTiebreakVote(roomCode, idVoter, idVotedFor)) {
+            return;
+        }
+
+        if (haveAllTiebreakVotersVoted(roomCode)) {
+            finishTiebreakVoting(roomCode);
         }
     });
 

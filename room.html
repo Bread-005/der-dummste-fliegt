@@ -22,11 +22,25 @@
             <div id="questionArea">
                 <p id="textQuestion"></p>
                 <p id="textVotingHint" hidden>Vote nun die Person die für dich diese Runde am dümmsten war.</p>
+                <p id="textTiebreakVotingHint" hidden></p>
                 <p id="textFinaleProgress" hidden></p>
 
                 <div id="answerInputRow">
                     <input id="inputAnswer" type="text" placeholder="Antwort eingeben" maxlength="200">
                     <button id="buttonSubmitAnswer">Absenden</button>
+                </div>
+
+                <div id="tiebreakAnswerRow" hidden>
+                    <div id="tiebreakAnswerLeft" class="finalePlayerAnswer">
+                        <p class="finalePlayerName" id="textTiebreakNameLeft"></p>
+                        <input id="inputTiebreakAnswerLeft" type="text" placeholder="Antwort eingeben" maxlength="200">
+                        <button id="buttonSubmitTiebreakAnswerLeft">Absenden</button>
+                    </div>
+                    <div id="tiebreakAnswerRight" class="finalePlayerAnswer">
+                        <p class="finalePlayerName" id="textTiebreakNameRight"></p>
+                        <input id="inputTiebreakAnswerRight" type="text" placeholder="Antwort eingeben" maxlength="200">
+                        <button id="buttonSubmitTiebreakAnswerRight">Absenden</button>
+                    </div>
                 </div>
 
                 <div id="finaleAnswerRow" hidden>
@@ -45,6 +59,12 @@
                 <div id="answerReveal" hidden>
                     <p id="textPlayerAnswer"></p>
                     <p id="textCorrectAnswer"></p>
+                </div>
+
+                <div id="tiebreakReveal" hidden>
+                    <p id="textTiebreakAnswerLeft"></p>
+                    <p id="textTiebreakAnswerRight"></p>
+                    <p id="textTiebreakCorrectAnswer"></p>
                 </div>
 
                 <div id="finaleReveal" hidden>

@@ -12,12 +12,18 @@
   Spielern beide Fragen beantwortet, wechselt der Raum in die Voting-Phase.
   In der Voting-Phase klickt jeder Spieler in der unteren Spielerliste auf eine Person, um sie zu
   voten (30 Sekunden Zeit, `votingDurationMs`/`votingStartedAt` treiben dieselbe Zeitleiste wie im
-  Fragemodus); wer bis dahin nicht gevotet hat, votet automatisch sich selbst. Wer die meisten
-  Stimmen bekommt, verliert ein Herz; bei Unentschieden verlieren alle daran Beteiligten je ein
-  Herz (Minimum 0 Leben). Danach wird 15 Sekunden lang aufgelöst, wer für wen gevotet hat und wer
-  ein Herz verliert (`votingResolved`, ebenfalls mit eigener `resultDurationMs`/`resultStartedAt`
-  auf derselben Zeitleiste), bevor automatisch ein neuer Durchgang mit neu gewürfelter
-  Zugreihenfolge gestartet wird — die Auflösungs-Anzeige wird dabei wieder ausgeblendet. Sind nach
+  Fragemodus); wer bis dahin nicht gevotet hat, votet automatisch sich selbst. Danach entscheidet,
+  wie viele Spieler mit der höchsten Stimmenzahl gleichauf liegen (`resolveVotingPhase()` in
+  `roomManager.js`): Ist genau ein Spieler an der Spitze, verliert nur dieser ein Herz (Minimum 0
+  Leben). Liegen drei oder mehr Spieler gleichauf an der Spitze (oder hat niemand eine zählende
+  Stimme bekommen), betrifft das Unentschieden zu viel vom Feld, um eine Gruppe herauszugreifen —
+  niemand verliert ein Herz. Liegen dagegen **genau zwei** Spieler gleichauf an der Spitze, wird der
+  Konflikt nicht sofort aufgelöst, sondern per Stichfrage entschieden (siehe eigener Absatz unten);
+  erst deren Ergebnis bestimmt, wer ein Herz verliert. Danach wird 15 Sekunden lang aufgelöst, wer
+  für wen gevotet hat und wer ein Herz verliert (`votingResolved`, ebenfalls mit eigener
+  `resultDurationMs`/`resultStartedAt` auf derselben Zeitleiste), bevor automatisch ein neuer
+  Durchgang mit neu gewürfelter Zugreihenfolge gestartet wird — die Auflösungs-Anzeige wird dabei
+  wieder ausgeblendet. Sind nach
   der Stimmauszählung nur noch genau zwei Spieler am Leben, wird die `votingResolved`-Anzeige
   bewusst übersprungen (kein 15-sekündiges Auflösungs-Zwischenspiel) und stattdessen sofort das
   Finale gestartet (`startFinale()` in `roomManager.js`, siehe `finishVoting()` in `server.js`):
@@ -75,6 +81,62 @@
   angezeigt, sondern unten rechts in einer eigenen Box unter der Überschrift "Tote Spieler" nur
   mit ihrem Namen (ohne Herzen/Punkte) gelistet, sind bei der Zugvergabe nicht mehr an der Reihe
   und können weder voten noch gevotet werden.
+- Liegen nach einer Voting-Auflösung genau zwei Spieler mit der höchsten Stimmenzahl gleichauf,
+  entscheidet eine Stichfrage zwischen genau diesen beiden, statt dass sofort beide (wie bei einem
+  gewöhnlichen Unentschieden zwischen weniger als drei Spielern) ein Herz verlieren. Ablauf (server-
+  seitig in `roomManager.js`, orchestriert über `finishVoting()`/`startTiebreakRound()`/
+  `revealTiebreakAnswerAndAdvance()`/`startTiebreakVotingRound()`/`finishTiebreakVoting()` in
+  `server.js`): Beide Kandidaten bekommen dieselbe eine Frage aus dem laufenden, gemeinsamen
+  Fragenpool (`shuffledQuestions`/`indexQuestion`, wie ein normaler Zug — kein eigener frisch
+  gemischter Pool wie beim Finale) gleichzeitig gestellt, mit demselben links/rechts-Eingabefeld-
+  Layout wie im Finale, nur eben als eigene UI-Elemente (`#tiebreakAnswerRow`,
+  `#inputTiebreakAnswerLeft`/`Right` usw. in `room.html`), damit sich `isFinalePhase`/
+  `finaleIdPlayers`/`finaleAnswersByPlayer` und die neuen, rein für die Stichfrage genutzten
+  Client-Variablen (`isTiebreakVotingPhase`, `tiebreakIdPlayers`) nicht gegenseitig verfälschen —
+  eine Stichfrage läuft ohnehin nie gleichzeitig mit dem echten Finale. Nach 30 Sekunden
+  (`tiebreakDurationMs`/`tiebreakStartedAt`, dieselbe Zeitleiste) oder sobald beide geantwortet
+  haben, werden 5 Sekunden lang (`tiebreakAnswerRevealed`, `REVEAL_DURATION_MS`) beide Antworten
+  plus die richtige Antwort gezeigt — die Richtigkeit der Antwort hat dabei aber keinerlei
+  Auswirkung auf den Ausgleich, sie dient nur der Unterhaltung. Danach votet 10 Sekunden lang
+  (`tiebreakVotingStarted`, `tiebreakVotingDurationMs`/`tiebreakVotingStartedAt`,
+  `TIEBREAK_VOTING_DURATION_MS` in `server.js` — bewusst kürzer als die 30 Sekunden des normalen
+  Votings) jeder lebende Spieler **außer den beiden Kandidaten selbst** in derselben unteren
+  Spielerliste erneut, diesmal beschränkt auf nur diese zwei Ziele (Kachel-Klasse
+  `.tiebreakCandidate`, golden umrandet wie `.currentTurn`; alle anderen Kacheln sind währenddessen
+  abgedunkelt/nicht klickbar, siehe `#listPlayersInGame.tiebreakVotingActive` in `style.css` —
+  Kandidaten selbst sehen dank der zusätzlichen Klasse `.tiebreakParticipant` überhaupt keine
+  anklickbare Kachel). Ein Kandidat, der die Stichfrage selbst richtig beantwortet hat, ist für
+  genau diesen Re-Vote vom Voten ausgeschlossen (`.immuneFromVoting`, serverseitig geprüft über
+  `tiebreak.wasCorrect` in `submitTiebreakVote()`, gesetzt von `resolveTiebreakQuestion()`) — eine
+  richtige Antwort ist bei der Stichfrage also die eigene, separate Möglichkeit, sich zu schützen,
+  unabhängig von der (dort ohnehin praktisch nie erreichbaren) Immunität aus dem normalen
+  Durchgang, die `submitTiebreakVote()` zusätzlich als reine Absicherung mitprüft. Sind nach einer
+  Stichfrage-Antwort beide Kandidaten immun (beide richtig beantwortet), kann in diesem Re-Vote
+  niemand gültig gevotet werden — die Runde läuft dadurch einfach in den 10-Sekunden-Timeout und
+  startet automatisch die nächste Stichfrage-Runde (siehe `resolveTiebreakVoting()`s
+  `"stillTied"`-Fall unten). Anders als beim normalen Voting gibt es hier **keinen** automatischen
+  Selbst-Vote-Fallback für Nichtwähler — eine nicht abgegebene Stimme fällt schlicht weg
+  (`submitTiebreakVote()`/`resolveTiebreakVoting()`).
+  Bekommt einer der beiden Kandidaten daraufhin mehr Stimmen als der andere, verliert nur er ein
+  Herz und die Runde wird ganz normal per `votingResolved` aufgelöst; bleibt der Ausgleich auch
+  hier bestehen (inklusive 0:0, falls niemand außerhalb der beiden wählen durfte oder wollte),
+  startet automatisch eine weitere Stichfrage-Runde zwischen denselben zwei Kandidaten — das
+  wiederholt sich, bis eine Seite eine echte Mehrheit der abgegebenen Stimmen bekommt. Verlässt
+  einer der beiden Kandidaten den Raum, während die Stichfrage noch läuft, kann sie nicht mehr
+  entschieden werden: Sie wird abgebrochen und die Runde sofort ohne Herzverlust aufgelöst, exakt
+  wie ein Unentschieden über das gesamte Feld (`wasTiebreakCandidate` in `removePlayerFromRoom()`/
+  `handlePlayerRemovedDuringGame()`). Sobald eine Stichfrage beginnt (auch eine wiederholte, nach
+  einem erneut unentschiedenen Re-Vote), verschwinden die grauen/grünen Antwort-Punkte unter dem
+  Namen sofort für **alle** Spieler (nicht nur für die beiden Kandidaten) — `applyTiebreakStarted()`
+  in `room.js` leert dafür bei jedem Aufruf `tiebreakAnswersByPlayer`, und die neue Variable
+  `isTiebreakActive` weist `renderPlayers()` an, während einer laufenden Stichfrage nicht mehr
+  `answersByPlayerThisRound` heranzuziehen. Erst nachdem die Stichfrage-Antwort aufgelöst wurde,
+  tauchen die Punkte wieder auf, aber ausschließlich für die zwei Spieler, die diese eine
+  Stichfrage tatsächlich gespielt haben — analog zum Finale trägt `applyTiebreakAnswerRevealed()`
+  deren Antwort in eine eigene, nur für diese beiden geführte Historie (`tiebreakAnswersByPlayer`)
+  ein. Bei einer wiederholten Stichfrage-Runde ist diese Historie also bewusst nicht kumulativ über
+  mehrere Fragen hinweg, sondern zeigt immer nur die zuletzt gestellte Stichfrage; endgültig
+  zurückgesetzt wird sie ohnehin, sobald die Runde ganz aufgelöst ist (`resetTiebreakUi()`).
 - Nicht implementiert: Punktevergabe außerhalb des Finales. Bleibt nach einer Voting-Auflösung nur
   noch ein Spieler (oder keiner) übrig, endet das Spiel schlicht, ohne dass ein "Sieger" ermittelt
   wird — dieser Fall dürfte in der Praxis selten auftreten (z. B. bei einem Unentschieden unter
@@ -182,18 +244,25 @@
   lebende Spieler (siehe unten) und lehnt Stimmen auf einen so "immunen" Spieler ab;
   `haveAllPlayersVoted()` prüft, ob alle aktuellen *lebenden* Spieler gevotet haben — `server.js`
   löst dann sofort per `finishVoting()` auf, statt auf den 30-Sekunden-Timeout zu warten.
-  `resolveVotes()` ergänzt fehlende Votes lebender Spieler als Selbst-Votes, zählt aus (Stimmen auf
-  einen immunen Spieler — auch dessen eigener Fallback-Selbst-Vote — zählen dabei nicht mit),
-  ermittelt alle Spieler mit der höchsten Stimmenzahl (bei Gleichstand mehrere) und zieht ihnen je
-  ein Leben ab (nie unter 0; sind alle verbleibenden Stimmen immun, verliert niemand ein Leben).
-  `startNextRound()` würfelt danach `playerOrder` neu, setzt `answeredCounts`/`answersGiven`/
+  `resolveVotingPhase()` ergänzt fehlende Votes lebender Spieler als Selbst-Votes, zählt aus
+  (Stimmen auf einen immunen Spieler — auch dessen eigener Fallback-Selbst-Vote — zählen dabei
+  nicht mit) und ermittelt alle Spieler mit der höchsten Stimmenzahl. Sind das genau zwei, gibt die
+  Funktion `{type: "tiebreak", idPlayers}` zurück, statt direkt Leben abzuziehen — `finishVoting()`
+  in `server.js` startet daraufhin die Stichfrage (siehe eigener Absatz im Projektstatus-Abschnitt);
+  in jedem anderen Fall (ein Spieler an der Spitze, oder drei/mehr gleichauf) liefert sie sofort
+  `{type: "resolved", ...}` mit den betroffenen Leben-Verlierern (nie unter 0 Leben; sind alle
+  verbleibenden Stimmen immun oder ist die Spitzengruppe zu groß, verliert niemand ein Leben) —
+  `finalizeVotingResolution()` in `server.js` bündelt das gemeinsame Auflösen (Broadcast von
+  `votingResolved`, Timer, Finale-/Rundenübergang) für diesen direkten Fall wie auch für eine per
+  Stichfrage entschiedene Runde. `startNextRound()` würfelt danach `playerOrder` neu, setzt
+  `answeredCounts`/`answersGiven`/
   `votes` zurück und schaltet `phase` wieder auf `"question"`, lässt aber den laufenden
   gemischten Fragenpool (`shuffledQuestions`/`indexQuestion`) unangetastet weiterlaufen.
 - `isPlayerAlive()` (`player.lives > 0`) entscheidet in `roomManager.js`, wer noch am Spiel
   teilnimmt: `getCurrentTurn()` überspringt tote Spieler bei der Zugvergabe genauso wie
   ausgeschiedene, `advanceTurn()` fordert die pflichtigen Fragen pro Durchgang nur noch von
-  lebenden Spielern ein, und `submitVote()`/`haveAllPlayersVoted()`/`resolveVotes()` beziehen tote
-  Spieler weder als Wähler noch als Wahlziel mit ein. Client-seitig teilt `renderPlayerLists()` in
+  lebenden Spielern ein, und `submitVote()`/`haveAllPlayersVoted()`/`resolveVotingPhase()` beziehen
+  tote Spieler weder als Wähler noch als Wahlziel mit ein. Client-seitig teilt `renderPlayerLists()` in
   `room.js` `currentPlayers` anhand von `lives > 0` in die normale Spielerliste
   (`#listPlayersInGame`) und die neue Box `#deadPlayersBox` ("Tote Spieler", nur Namen, keine
   Herzen/Punkte) auf.

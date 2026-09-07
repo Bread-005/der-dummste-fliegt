@@ -199,6 +199,24 @@ button:hover {
     gap: 5px;
 }
 
+#textTiebreakVotingHint {
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+#tiebreakAnswerRow:not([hidden]) {
+    display: flex;
+    gap: 12px;
+}
+
+#tiebreakReveal:not([hidden]) {
+    margin-top: 18px;
+    font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
 #finaleResult:not([hidden]) {
     margin-top: 18px;
     font-size: 18px;
@@ -272,6 +290,33 @@ button:hover {
 
 #listPlayersInGame.votingActive:not(.voted) li.immuneFromVoting:hover {
     border-color: #1d4ed8 !important;
+}
+
+.tiebreakCandidate {
+    border-color: #f5c518 !important;
+}
+
+#listPlayersInGame.tiebreakVotingActive li {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#listPlayersInGame.tiebreakVotingActive:not(.tiebreakParticipant):not(.voted) li.tiebreakCandidate {
+    cursor: pointer;
+    opacity: 1;
+}
+
+#listPlayersInGame.tiebreakVotingActive:not(.tiebreakParticipant):not(.voted) li.tiebreakCandidate:hover {
+    border-color: #f97316 !important;
+}
+
+#listPlayersInGame.tiebreakVotingActive:not(.tiebreakParticipant):not(.voted) li.tiebreakCandidate.immuneFromVoting {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#listPlayersInGame.tiebreakVotingActive:not(.tiebreakParticipant):not(.voted) li.tiebreakCandidate.immuneFromVoting:hover {
+    border-color: #f5c518 !important;
 }
 
 .playerHearts {
