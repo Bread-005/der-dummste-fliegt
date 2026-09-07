@@ -252,7 +252,9 @@ function joinRoom(roomCode, idPlayer, idSocket, playerName) {
         existingPlayer.idSocket = idSocket;
         existingPlayer.name = playerName;
     } else {
-        room.players.push({idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: STARTING_LIVES});
+        const livesOnJoin = room.game ? 0 : STARTING_LIVES;
+
+        room.players.push({idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: livesOnJoin});
     }
 
     return toPublicPlayers(room);

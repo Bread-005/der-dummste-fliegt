@@ -30,7 +30,6 @@ import {
 } from "./roomManager.js";
 import {loadQuestions} from "./questionRepository.js";
 
-const portServer = process.env.PORT || 3000;
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
 const VOTING_DURATION_MS = 30000;
@@ -512,6 +511,6 @@ try {
     console.error("Fragen konnten nicht geladen werden:", error.message);
 }
 
-httpServer.listen(3050, "0.0.0.0", () => {
+httpServer.listen(process.env.PORT || 3050, "0.0.0.0", () => {
     console.log("Access game on https://bread-005.github.io/der-dummste-fliegt/index.html");
 });
