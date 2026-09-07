@@ -1,0 +1,82 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Der Dümmste Fliegt</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>">
+    <link rel="stylesheet" href="frontend/css/style.css">
+</head>
+<body>
+    <main id="app">
+        <section id="roomScreen">
+            <button id="buttonStartGame" hidden>Spiel starten</button>
+        </section>
+
+        <section id="gameScreen" hidden>
+            <div id="timerBarTrack">
+                <div id="timerBarFill"></div>
+            </div>
+
+            <div id="questionArea">
+                <p id="textQuestion"></p>
+                <p id="textVotingHint" hidden>Vote nun die Person die für dich diese Runde am dümmsten war.</p>
+                <p id="textFinaleProgress" hidden></p>
+
+                <div id="answerInputRow">
+                    <input id="inputAnswer" type="text" placeholder="Antwort eingeben" maxlength="200">
+                    <button id="buttonSubmitAnswer">Absenden</button>
+                </div>
+
+                <div id="finaleAnswerRow" hidden>
+                    <div id="finaleAnswerLeft" class="finalePlayerAnswer">
+                        <p class="finalePlayerName" id="textFinaleNameLeft"></p>
+                        <input id="inputFinaleAnswerLeft" type="text" placeholder="Antwort eingeben" maxlength="200">
+                        <button id="buttonSubmitFinaleAnswerLeft">Absenden</button>
+                    </div>
+                    <div id="finaleAnswerRight" class="finalePlayerAnswer">
+                        <p class="finalePlayerName" id="textFinaleNameRight"></p>
+                        <input id="inputFinaleAnswerRight" type="text" placeholder="Antwort eingeben" maxlength="200">
+                        <button id="buttonSubmitFinaleAnswerRight">Absenden</button>
+                    </div>
+                </div>
+
+                <div id="answerReveal" hidden>
+                    <p id="textPlayerAnswer"></p>
+                    <p id="textCorrectAnswer"></p>
+                </div>
+
+                <div id="finaleReveal" hidden>
+                    <p id="textFinaleAnswerLeft"></p>
+                    <p id="textFinaleAnswerRight"></p>
+                    <p id="textFinaleCorrectAnswer"></p>
+                </div>
+
+                <div id="votingResult" hidden>
+                    <ul id="listVotes"></ul>
+                    <p id="textVotingOutcome"></p>
+                </div>
+
+                <div id="finaleResult" hidden>
+                    <p id="textFinaleWinner"></p>
+                    <button id="buttonRestartGame" hidden>Spiel neu starten</button>
+                </div>
+            </div>
+
+            <ul id="listPlayersInGame"></ul>
+
+            <div id="deadPlayersBox" hidden>
+                <p id="textDeadPlayersHeading">Tote Spieler</p>
+                <ul id="listDeadPlayers"></ul>
+            </div>
+        </section>
+
+        <button id="buttonLeaveRoom" class="buttonLeaveRoom">Verlassen</button>
+    </main>
+
+    <!-- TODO: Nach dem ersten Render-Deploy die tatsächliche Service-URL eintragen. -->
+    <script src="https://REPLACE_WITH_RENDER_URL.onrender.com/socket.io/socket.io.js"></script>
+    <script type="module" src="frontend/js/room.js"></script>
+</body>
+</html>

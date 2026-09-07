@@ -1,0 +1,347 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: sans-serif;
+    background-color: #1a1a1a;
+    color: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#app {
+    width: 100%;
+    max-width: 480px;
+    padding: 24px;
+}
+
+section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+input,
+button {
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #444;
+}
+
+button {
+    background-color: #e63946;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #c1121f;
+}
+
+#roomScreen {
+    align-items: center;
+}
+
+#buttonStartGame {
+    width: 200px;
+    margin-top: 24px;
+    background-color: #2e9e44;
+}
+
+#buttonStartGame:hover {
+    background-color: #237a34;
+}
+
+#lobbyScreen h1 {
+    text-align: center;
+}
+
+.rowInputs,
+.rowButtons {
+    display: flex;
+    gap: 12px;
+}
+
+.rowInputs input {
+    flex: 1;
+    min-width: 0;
+}
+
+.rowButtons button {
+    flex: 1;
+    min-width: 0;
+}
+
+#lobbyScreen button {
+    background-color: #1d4ed8;
+}
+
+#lobbyScreen button:hover {
+    background-color: #1e3a8a;
+}
+
+.buttonLeaveRoom {
+    position: fixed;
+    left: 24px;
+    bottom: 24px;
+    background-color: #444;
+}
+
+.buttonLeaveRoom:hover {
+    background-color: #333;
+}
+
+#timerBarTrack {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 6px;
+    background-color: #333;
+}
+
+#timerBarFill {
+    height: 100%;
+    width: 100%;
+    background-color: #2e9e44;
+}
+
+#questionArea {
+    position: fixed;
+    top: 25%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 480px;
+    text-align: center;
+}
+
+#textQuestion {
+    margin-bottom: 12px;
+    font-size: 20px;
+}
+
+#textVotingHint {
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+#answerInputRow:not([hidden]) {
+    display: flex;
+    gap: 12px;
+}
+
+#inputAnswer {
+    flex: 1;
+    min-width: 0;
+}
+
+#answerReveal:not([hidden]) {
+    margin-top: 18px;
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+#votingResult:not([hidden]) {
+    margin-top: 18px;
+    font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#textFinaleProgress {
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+#finaleAnswerRow:not([hidden]) {
+    display: flex;
+    gap: 12px;
+}
+
+.finalePlayerAnswer {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.finalePlayerName {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.finalePlayerAnswer input:disabled {
+    opacity: 0.5;
+}
+
+.finalePlayerAnswer button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#finaleReveal:not([hidden]) {
+    margin-top: 18px;
+    font-size: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+#finaleResult:not([hidden]) {
+    margin-top: 18px;
+    font-size: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+#buttonRestartGame {
+    width: 200px;
+    margin-top: 12px;
+    background-color: #2e9e44;
+}
+
+#buttonRestartGame:hover {
+    background-color: #237a34;
+}
+
+#listVotes {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#listPlayersInGame {
+    position: fixed;
+    bottom: 115px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    list-style: none;
+    padding: 0 24px;
+}
+
+#listPlayersInGame li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border: 2px solid #1d4ed8;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+
+.currentTurn {
+    font-weight: bold;
+    border-color: #f5c518 !important;
+}
+
+#listPlayersInGame.votingActive:not(.voted) li {
+    cursor: pointer;
+}
+
+#listPlayersInGame.votingActive:not(.voted) li:hover {
+    border-color: #f97316 !important;
+}
+
+.votedByMe {
+    border-color: #2e9e44 !important;
+}
+
+#listPlayersInGame.votingActive:not(.voted) li.immuneFromVoting {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#listPlayersInGame.votingActive:not(.voted) li.immuneFromVoting:hover {
+    border-color: #1d4ed8 !important;
+}
+
+.playerHearts {
+    display: flex;
+    gap: 3px;
+    font-size: 20px;
+    line-height: 1;
+}
+
+.playerAnsweredDots {
+    display: flex;
+    gap: 6px;
+    min-height: 14px;
+}
+
+.answeredDot {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #888;
+}
+
+.answeredDot.correctAnswerDot {
+    background-color: #2e9e44;
+}
+
+#deadPlayersBox {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    background-color: #262626;
+    border: 2px solid #444;
+    border-radius: 8px;
+}
+
+#textDeadPlayersHeading {
+    font-weight: bold;
+    font-size: 14px;
+}
+
+#listDeadPlayers {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.answeredDot[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 140%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 220px;
+    padding: 8px 10px;
+    background-color: #111;
+    color: #f0f0f0;
+    border: 1px solid #444;
+    border-radius: 6px;
+    font-size: 16px;
+    line-height: 1.5;
+    font-weight: normal;
+    text-align: left;
+    white-space: pre-line;
+    pointer-events: none;
+    z-index: 10;
+}

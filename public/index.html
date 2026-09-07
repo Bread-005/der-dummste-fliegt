@@ -1,0 +1,30 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Der Dümmste Fliegt</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>">
+    <link rel="stylesheet" href="frontend/css/style.css">
+</head>
+<body>
+    <main id="app">
+        <section id="lobbyScreen">
+            <h1>Der Dümmste Fliegt</h1>
+            <div class="rowInputs">
+                <input id="inputPlayerName" type="text" placeholder="Name eingeben" maxlength="20">
+                <input id="inputRoomCode" type="text" placeholder="Raumcode (optional)" maxlength="6">
+            </div>
+            <div class="rowButtons">
+                <button id="buttonCreateRoom">Raum erstellen</button>
+                <button id="buttonJoinRoom">Raum beitreten</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- TODO: Nach dem ersten Render-Deploy die tatsächliche Service-URL eintragen. -->
+    <script src="https://REPLACE_WITH_RENDER_URL.onrender.com/socket.io/socket.io.js"></script>
+    <script type="module" src="frontend/js/main.js"></script>
+</body>
+</html>

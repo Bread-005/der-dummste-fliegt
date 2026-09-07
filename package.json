@@ -1,0 +1,14 @@
+{
+  "name": "der-dummste-fliegt",
+  "version": "1.0.0",
+  "description": "Online-Version des Partyspiels 'Der Dümmste fliegt'.",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
