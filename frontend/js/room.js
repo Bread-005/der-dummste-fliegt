@@ -281,7 +281,7 @@ const playerName = sessionStorage.getItem("playerName");
 const roomCode = readRoomCodeFromUrl();
 
 if (!playerName || !roomCode) {
-    window.location.href = "index.html";
+    window.location.href = roomCode ? `index.html?room=${roomCode}` : "index.html";
 } else {
     const socket = connectToServer();
 

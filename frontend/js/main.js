@@ -9,6 +9,25 @@ const buttonJoinRoom = document.getElementById("buttonJoinRoom");
 const idPlayer = getOrCreatePlayerId();
 const socket = connectToServer();
 
+/**
+ * Reads the room code from the "room" query parameter (e.g. "index.html?room=<roomCode>"), so an
+ * invite link can prefill the room code field instead of requiring it to be typed in manually.
+ * @returns {string|null} The room code from the URL, or null if not present.
+ */
+function readRoomCodeFromUrl() {
+    const roomCode = new URLSearchParams(location.search).get("room");
+    return roomCode ? roomCode.toUpperCase() : null;
+}
+
+const roomCodeFromUrl = readRoomCodeFromUrl();
+
+if (roomCodeFromUrl) {
+    inputRoomCode.value = roomCodeFromUrl;
+    inputRoomCode.hidden = true;
+    buttonCreateRoom.hidden = true;
+    inputPlayerName.focus();
+}
+
 buttonCreateRoom.addEventListener("click", () => {
     const playerName = inputPlayerName.value.trim();
 
