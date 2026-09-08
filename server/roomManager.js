@@ -2,7 +2,9 @@ import {getAllQuestions} from "./questionRepository.js";
 
 const rooms = new Map();
 const DISCONNECT_GRACE_PERIOD_MS = 5000;
-const STARTING_LIVES = 1;
+const DEFAULT_STARTING_LIVES = 3;
+const MIN_STARTING_LIVES = 1;
+const MAX_STARTING_LIVES = 5;
 const QUESTIONS_PER_PLAYER_PER_ROUND = 1;
 const MINIMUM_PLAYERS_TO_START = 3;
 const FINALE_QUESTION_COUNT = 5;
@@ -249,19 +251,20 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
  * @param {string} idPlayer - The persistent id of the creating player.
  * @param {string} idSocket - The current socket id of the creating player.
  * @param {string} playerName - The display name of the creating player.
- * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>}} The created room.
+ * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number}}} The created room.
  */
 function createRoom(idPlayer, idSocket, playerName) {
     const roomCode = generateRoomCode();
     const room = {
-        players: [{idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: STARTING_LIVES}],
+        players: [{idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: DEFAULT_STARTING_LIVES}],
         idHost: idPlayer,
         game: null,
+        settings: {startingLives: DEFAULT_STARTING_LIVES},
     };
 
     rooms.set(roomCode, room);
 
-    return {roomCode, players: toPublicPlayers(room)};
+    return {roomCode, players: toPublicPlayers(room), settings: {...room.settings}};
 }
 
 /**
@@ -271,7 +274,8 @@ function createRoom(idPlayer, idSocket, playerName) {
  * @param {string} idPlayer - The persistent id of the joining player.
  * @param {string} idSocket - The current socket id of the joining player.
  * @param {string} playerName - The display name of the joining player.
- * @returns {Array<{idPlayer: string, name: string, isHost: boolean}>|null} The updated player list, or null if the room does not exist.
+ * @returns {{players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number}}|null}
+ *   The updated player list and current room settings, or null if the room does not exist.
  */
 function joinRoom(roomCode, idPlayer, idSocket, playerName) {
     const room = rooms.get(roomCode);
@@ -288,12 +292,12 @@ function joinRoom(roomCode, idPlayer, idSocket, playerName) {
         existingPlayer.idSocket = idSocket;
         existingPlayer.name = playerName;
     } else {
-        const livesOnJoin = room.game ? 0 : STARTING_LIVES;
+        const livesOnJoin = room.game ? 0 : room.settings.startingLives;
 
         room.players.push({idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: livesOnJoin});
     }
 
-    return toPublicPlayers(room);
+    return {players: toPublicPlayers(room), settings: {...room.settings}};
 }
 
 /**
@@ -393,7 +397,7 @@ function startGame(roomCode) {
     }
 
     room.players.forEach((player) => {
-        player.lives = STARTING_LIVES;
+        player.lives = room.settings.startingLives;
     });
 
     room.game = {
@@ -1185,7 +1189,7 @@ function advanceFinaleQuestion(roomCode) {
 }
 
 /**
- * Revives every player in a room back to `STARTING_LIVES`, e.g. once the finale is over and the
+ * Revives every player in a room back to the room's `settings.startingLives`, e.g. once the finale is over and the
  * players eliminated during the normal rounds should no longer show up as dead on the finale
  * result screen or in a subsequently restarted game.
  * @param {string} roomCode - The code of the room.
@@ -1198,8 +1202,32 @@ function revivePlayersAfterFinale(roomCode) {
     }
 
     room.players.forEach((player) => {
-        player.lives = STARTING_LIVES;
+        player.lives = room.settings.startingLives;
     });
+}
+
+/**
+ * Updates a room's starting-lives setting. Only the room's host may change it, and only while no
+ * game is in progress in that room, since changing it mid-game would desync the hearts already
+ * shown for the current game.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} idSocket - The socket id of the player requesting the change.
+ * @param {number} startingLives - The requested number of starting lives, clamped to
+ *   `[MIN_STARTING_LIVES, MAX_STARTING_LIVES]`.
+ * @returns {{startingLives: number}|null} The room's updated settings, or null if the change was
+ *   rejected (room not found, requester not host, or a game is currently running).
+ */
+function updateStartingLives(roomCode, idSocket, startingLives) {
+    const room = rooms.get(roomCode);
+
+    if (!room || room.game || !isRoomHost(roomCode, idSocket)) {
+        return null;
+    }
+
+    const clampedStartingLives = Math.min(MAX_STARTING_LIVES, Math.max(MIN_STARTING_LIVES, Math.round(startingLives)));
+    room.settings.startingLives = clampedStartingLives;
+
+    return {...room.settings};
 }
 
 /**
@@ -1240,6 +1268,7 @@ export {
     scheduleRemovalOnDisconnect,
     isRoomHost,
     hasEnoughPlayersToStart,
+    updateStartingLives,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,

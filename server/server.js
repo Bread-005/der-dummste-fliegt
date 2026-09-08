@@ -8,6 +8,7 @@ import {
     scheduleRemovalOnDisconnect,
     isRoomHost,
     hasEnoughPlayersToStart,
+    updateStartingLives,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,
@@ -590,23 +591,35 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
 
 socketServer.on("connection", (socket) => {
     socket.on("createRoom", ({playerName, idPlayer}) => {
-        const {roomCode, players} = createRoom(idPlayer, socket.id, playerName);
+        const {roomCode, players, settings} = createRoom(idPlayer, socket.id, playerName);
 
         socket.join(roomCode);
-        socket.emit("roomJoined", {roomCode, players});
+        socket.emit("roomJoined", {roomCode, players, settings});
     });
 
     socket.on("joinRoom", ({playerName, roomCode, idPlayer}) => {
-        const players = joinRoom(roomCode, idPlayer, socket.id, playerName);
+        const joined = joinRoom(roomCode, idPlayer, socket.id, playerName);
 
-        if (!players) {
+        if (!joined) {
             socket.emit("errorMessage", {message: "Raum wurde nicht gefunden."});
             return;
         }
 
+        const {players, settings} = joined;
+
         socket.join(roomCode);
-        socket.emit("roomJoined", {roomCode, players, gameState: gameDisplayStates.get(roomCode) ?? null});
+        socket.emit("roomJoined", {roomCode, players, settings, gameState: gameDisplayStates.get(roomCode) ?? null});
         socket.to(roomCode).emit("playersUpdated", {players});
+    });
+
+    socket.on("updateRoomSettings", ({roomCode, startingLives}) => {
+        const settings = updateStartingLives(roomCode, socket.id, startingLives);
+
+        if (!settings) {
+            return;
+        }
+
+        socketServer.to(roomCode).emit("roomSettingsUpdated", {settings});
     });
 
     socket.on("startGame", ({roomCode}) => {

@@ -11,6 +11,20 @@
 <body>
     <main id="app">
         <section id="roomScreen">
+            <div id="settingsSection">
+                <h2 id="textSettingsHeading">Einstellungen</h2>
+                <div id="settingsGrid">
+                    <div class="settingItem" id="settingStartingLives">
+                        <p class="settingLabel">Start-Herzen</p>
+                        <div class="settingStepper">
+                            <button type="button" id="buttonStartingLivesDecrease" aria-label="Weniger Start-Herzen" disabled>−</button>
+                            <span id="textStartingLivesValue"></span>
+                            <button type="button" id="buttonStartingLivesIncrease" aria-label="Mehr Start-Herzen" disabled>+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <button id="buttonStartGame" hidden>Spiel starten</button>
         </section>
 

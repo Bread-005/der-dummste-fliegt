@@ -49,10 +49,16 @@ const textFinaleCorrectAnswer = document.getElementById("textFinaleCorrectAnswer
 const finaleResult = document.getElementById("finaleResult");
 const textFinaleWinner = document.getElementById("textFinaleWinner");
 const buttonRestartGame = document.getElementById("buttonRestartGame");
+const textStartingLivesValue = document.getElementById("textStartingLivesValue");
+const buttonStartingLivesDecrease = document.getElementById("buttonStartingLivesDecrease");
+const buttonStartingLivesIncrease = document.getElementById("buttonStartingLivesIncrease");
 
-const MAX_LIVES = 3;
+const MIN_STARTING_LIVES = 1;
+const MAX_STARTING_LIVES = 5;
+const DEFAULT_STARTING_LIVES = 3;
 
 let currentPlayers = [];
+let startingLives = DEFAULT_STARTING_LIVES;
 let idCurrentTurnPlayer = null;
 let hasGameStarted = false;
 let isVotingPhase = false;
@@ -117,7 +123,7 @@ function renderPlayerHearts(lives) {
     const heartsRow = document.createElement("div");
     heartsRow.classList.add("playerHearts");
 
-    for (let indexHeart = 0; indexHeart < MAX_LIVES; indexHeart++) {
+    for (let indexHeart = 0; indexHeart < startingLives; indexHeart++) {
         const heartIcon = document.createElement("span");
         heartIcon.classList.add("heartIcon");
         heartIcon.textContent = indexHeart < lives ? "❤️" : "🤍";
@@ -264,14 +270,32 @@ function renderPlayerLists(idOwnPlayer) {
     renderPlayers(listPlayersInGame, alivePlayers, idCurrentTurnPlayer);
     renderDeadPlayers(deadPlayers);
 
+    const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
+    renderStartingLivesSetting(ownPlayer?.isHost ?? false);
+
     if (hasGameStarted) {
         buttonStartGame.hidden = true;
         return;
     }
 
-    const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     const hasEnoughPlayers = currentPlayers.length >= MINIMUM_PLAYERS_TO_START;
     buttonStartGame.hidden = !ownPlayer?.isHost || !hasEnoughPlayers;
+}
+
+/**
+ * Renders the starting-lives setting control: shows the current value to everyone, and shows the
+ * +/- buttons only to the host, enabled only while no game is currently running in the room.
+ * @param {boolean} isHost - Whether the viewing player is the room's host.
+ */
+function renderStartingLivesSetting(isHost) {
+    textStartingLivesValue.textContent = String(startingLives);
+
+    buttonStartingLivesDecrease.hidden = !isHost;
+    buttonStartingLivesIncrease.hidden = !isHost;
+
+    const canEdit = isHost && !hasGameStarted;
+    buttonStartingLivesDecrease.disabled = !canEdit || startingLives <= MIN_STARTING_LIVES;
+    buttonStartingLivesIncrease.disabled = !canEdit || startingLives >= MAX_STARTING_LIVES;
 }
 
 /**
@@ -939,14 +963,20 @@ if (!playerName || !roomCode) {
 
     socket.emit("joinRoom", {playerName, roomCode, idPlayer});
 
-    socket.on("roomJoined", ({players, gameState}) => {
+    socket.on("roomJoined", ({players, settings, gameState}) => {
         currentPlayers = players;
+        startingLives = settings.startingLives;
         renderPlayerLists(idPlayer);
         applyGameStateOnRejoin(gameState);
     });
 
     socket.on("playersUpdated", ({players}) => {
         currentPlayers = players;
+        renderPlayerLists(idPlayer);
+    });
+
+    socket.on("roomSettingsUpdated", ({settings}) => {
+        startingLives = settings.startingLives;
         renderPlayerLists(idPlayer);
     });
 
@@ -1022,6 +1052,14 @@ if (!playerName || !roomCode) {
 
     buttonRestartGame.addEventListener("click", () => {
         socket.emit("startGame", {roomCode});
+    });
+
+    buttonStartingLivesDecrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, startingLives: startingLives - 1});
+    });
+
+    buttonStartingLivesIncrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, startingLives: startingLives + 1});
     });
 
     inputAnswer.addEventListener("keydown", (event) => {
