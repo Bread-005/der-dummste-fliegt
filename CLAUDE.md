@@ -207,10 +207,14 @@
   Timer-Verwaltung (`setTimeout` pro Raum, `TURN_DURATION_MS`) liegt bewusst in `server.js`, nicht
   in `roomManager.js`, da sie ans Socket.IO-Emitten gekoppelt ist — `roomManager.js` bleibt reine
   Zustandslogik ohne Kenntnis von Sockets/Broadcasts.
-- Leben (`STARTING_LIVES = 3`) und beantwortete Fragen pro Durchgang (`QUESTIONS_PER_PLAYER_PER_ROUND = 2`)
-  sind Konstanten in `roomManager.js`. `advanceTurn()` erhöht beim Zugwechsel zuerst
-  `answeredCounts[idPlayer]` des gerade beendeten Zugs; haben danach alle aktuellen Spieler die
-  geforderte Anzahl erreicht, wird `room.game.phase = "voting"` gesetzt und `{phase: "voting"}`
+- Leben und beantwortete Fragen pro Durchgang sind seit der Host-Einstellbarkeit (siehe eigener
+  Absatz unten) keine festen Konstanten mehr, sondern liegen pro Raum in `room.settings`
+  (`{startingLives, questionsPerPlayerPerRound}`), mit `DEFAULT_STARTING_LIVES = 3` und
+  `DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2` als Startwerte, solange der Host nichts ändert.
+  `advanceTurn()` erhöht beim Zugwechsel zuerst
+  `answeredCounts[idPlayer]` des gerade beendeten Zugs; haben danach alle aktuellen Spieler die in
+  `room.settings.questionsPerPlayerPerRound` geforderte Anzahl erreicht, wird
+  `room.game.phase = "voting"` gesetzt und `{phase: "voting"}`
   statt eines neuen Zugs zurückgegeben — `handleTurnResult()` in `server.js` unterscheidet danach,
   ob `turnStarted` (inkl. `scheduleTurnTimeout()`) oder die Voting-Phase (`startVotingPhase()`)
   gestartet wird. `indexQuestion` wird dabei in jedem Fall um eins erhöht (auch beim letzten Zug
@@ -220,8 +224,29 @@
   gestellt wurde) — ein Durchgangswechsel allein löst kein Neumischen aus. `lives` steht in der
   öffentlichen Spieler-Repräsentation
   (`toPublicPlayers()`/`getPublicPlayers()`) bereit und wird bei jedem `startGame()` auf
-  `STARTING_LIVES` zurückgesetzt (nicht bei `startNextRound()`, das nur einen neuen
+  `room.settings.startingLives` zurückgesetzt (nicht bei `startNextRound()`, das nur einen neuen
   Fragedurchgang ohne Lebensreset beginnt).
+- Der Host kann `startingLives` und `questionsPerPlayerPerRound` direkt im Warteraum einstellen,
+  bevor das Spiel läuft: Auf `room.html` sitzt dafür oberhalb des "Spiel starten"-Buttons ein
+  `#settingsSection`-Block mit einem 3×2-Raster (`#settingsGrid`), aktuell mit den beiden Kacheln
+  "Start-Herzen" (`#settingStartingLives`) und "Fragen pro Spieler pro Runde"
+  (`#settingQuestionsPerPlayerPerRound`), jede mit einem +/- Stepper. Der aktuelle Wert ist für
+  alle Spieler im Raum sichtbar, die +/- Buttons selbst blendet `renderStartingLivesSetting()`
+  bzw. `renderQuestionsPerPlayerPerRoundSetting()` in `room.js` per `.hidden` aber nur für den Host
+  ein (nicht bloß `disabled` — Nicht-Hosts sehen sie gar nicht); zusätzlich bleiben sie auch für den
+  Host `disabled`, sobald ein Spiel läuft (`hasGameStarted`) oder der jeweilige Min-/Max-Wert
+  erreicht ist (`MIN_/MAX_STARTING_LIVES = 1/5`, `MIN_/MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 1/5`
+  in `room.js`, serverseitig dieselben Grenzen in `roomManager.js`). Ein Klick sendet
+  `updateRoomSettings` mit entweder `startingLives` oder `questionsPerPlayerPerRound` an den
+  Server; `updateStartingLives()`/`updateQuestionsPerPlayerPerRound()` in `roomManager.js` prüfen
+  serverseitig erneut (nie dem Client vertrauend), dass der Absender tatsächlich der Host ist
+  (`isRoomHost()`) und kein Spiel läuft (`!room.game`), klemmen den Wert auf die erlaubte Spanne
+  und schreiben ihn in `room.settings`. Bei Erfolg broadcastet `server.js` das komplette
+  `settings`-Objekt per `roomSettingsUpdated` an alle im Raum; `room.js` übernimmt es 1:1 in die
+  Modul-Variablen `startingLives`/`questionsPerPlayerPerRound` und rendert neu. Neu erstellte
+  (`createRoom()`) wie beitretende (`joinRoom()`) Räume bekommen die aktuellen `room.settings` seit
+  dieser Änderung zusätzlich im `roomJoined`-Event mitgeschickt, damit auch ein später
+  beitretender oder rejoinender Client sofort die richtigen Werte anzeigt statt der Modul-Defaults.
 - Voting-Logik lebt ebenfalls in `roomManager.js`: `room.game.votes` (idVoter → idVotedFor) und
   `room.game.answersGiven` (idPlayer → Array aus `{questionText, answerGiven, correctAnswer,
   isCorrect}`, eine Zeile pro beantworteter Frage) werden bei `startGame()`/`startNextRound()`
@@ -368,6 +393,16 @@
   `room.players` entfernt werden, daher deckt diese eine Stelle beide Entfernungspfade
   (`leaveRoom()` und `scheduleRemovalOnDisconnect()`) ab. Welcher der verbleibenden Spieler neue
   Krone bekommt, ist bewusst beliebig (erster Eintrag im Array), keine Wahl oder Priorisierung.
+- `MINIMUM_PLAYERS_TO_START` (in `roomManager.js` und identisch in `room.js`) liegt bei 2, nicht
+  bei 3 — ein Raum mit genau zwei Spielern kann das Spiel direkt starten. In diesem Fall überspringt
+  `startGame()` den normalen Fragedurchgang komplett (der ohnehin ein aussagekräftiges Voting unter
+  mindestens drei Spielern voraussetzt) und ruft nach dem üblichen Leben-Reset sofort `startFinale()`
+  auf, statt zuerst `buildQuestionTurn()` zu liefern; der zurückgegebene Wert trägt dadurch schon
+  `phase: "finale"` statt `phase: "question"`. `handleTurnResult()` in `server.js` erkennt diesen
+  dritten Fall (neben `"voting"` und dem impliziten Frage-Fall) und reicht ihn an
+  `handleFinaleAdvanceResult()` durch, die daraufhin ganz normal `finaleStarted` broadcastet —
+  clientseitig ändert sich dadurch nichts, `applyFinaleStarted()` in `room.js` verarbeitet dieses
+  Event unabhängig davon, ob ihm zuvor ein normaler Durchgang vorausging.
 - In `style.css` müssen Container, die per `element.hidden = true`/`false` ein- und ausgeblendet
   werden (`#answerReveal`, `#votingResult`, `#finaleReveal`, `#finaleResult` usw.), ihre
   `display`-Deklaration mit `:not([hidden])` scopen (siehe `#answerInputRow:not([hidden])` als
