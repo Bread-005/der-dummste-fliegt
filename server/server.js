@@ -102,8 +102,10 @@ function broadcastTurn(roomCode, turn) {
  * Applies the result of starting a game or advancing a turn: either broadcasts the next question
  * turn and schedules its timeout, or, once every player has answered enough questions this round,
  * starts the voting phase.
+ * Also handles `startGame()`'s two-player case, where the very first result is already a finale
+ * question instead of a normal turn.
  * @param {string} roomCode - The code of the room.
- * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|null} turnResult -
+ * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null} turnResult -
  *   The result returned by `startGame()`, `advanceTurn()`, or `startNextRound()`.
  */
 function handleTurnResult(roomCode, turnResult) {
@@ -114,6 +116,11 @@ function handleTurnResult(roomCode, turnResult) {
 
     if (turnResult.phase === "voting") {
         startVotingPhase(roomCode);
+        return;
+    }
+
+    if (turnResult.phase === "finale") {
+        handleFinaleAdvanceResult(roomCode, turnResult);
         return;
     }
 
@@ -633,7 +640,7 @@ socketServer.on("connection", (socket) => {
 
         if (!hasEnoughPlayersToStart(roomCode)) {
             socket.emit("gameErrorMessage", {
-                message: "Das Spiel kann erst mit mindestens 3 Spielern gestartet werden.",
+                message: "Das Spiel kann erst mit mindestens 2 Spielern gestartet werden.",
             });
             return;
         }

@@ -8,7 +8,7 @@ const MAX_STARTING_LIVES = 5;
 const DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2;
 const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
 const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
-const MINIMUM_PLAYERS_TO_START = 3;
+const MINIMUM_PLAYERS_TO_START = 2;
 const FINALE_QUESTION_COUNT = 5;
 
 /**
@@ -386,24 +386,47 @@ function hasEnoughPlayersToStart(roomCode) {
 
 /**
  * Starts a new game in a room: resets every player's lives, shuffles all available questions
- * once, and sets a random turn order over the room's current players. Only the room's host is
- * meant to trigger this (checked by the caller); the caller must also check
+ * once, and sets a random turn order over the room's current players. With exactly two players,
+ * a normal round (which needs at least three players to produce a meaningful vote) is skipped
+ * entirely and the game goes straight into the finale between the two of them instead. Only the
+ * room's host is meant to trigger this (checked by the caller); the caller must also check
  * `hasEnoughPlayersToStart()` beforehand, as this function does not enforce the minimum itself.
  * @param {string} roomCode - The code of the room.
- * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|null} The
- *   first turn, or null if the room does not exist or no questions are available.
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null}
+ *   The first turn, the first finale question (for a two-player game), or null if the room does
+ *   not exist or no questions are available.
  */
 function startGame(roomCode) {
     const room = rooms.get(roomCode);
-    const shuffledQuestions = shuffleArray(getAllQuestions());
 
-    if (!room || shuffledQuestions.length === 0) {
+    if (!room) {
         return null;
     }
 
     room.players.forEach((player) => {
         player.lives = room.settings.startingLives;
     });
+
+    if (room.players.length === 2) {
+        room.game = {
+            shuffledQuestions: [],
+            indexQuestion: 0,
+            playerOrder: room.players.map((player) => player.idPlayer),
+            indexCurrentPlayer: 0,
+            answeredCounts: {},
+            answersGiven: {},
+            votes: {},
+            phase: "question",
+        };
+
+        return startFinale(roomCode);
+    }
+
+    const shuffledQuestions = shuffleArray(getAllQuestions());
+
+    if (shuffledQuestions.length === 0) {
+        return null;
+    }
 
     room.game = {
         shuffledQuestions,

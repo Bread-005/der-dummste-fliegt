@@ -1,7 +1,7 @@
 import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
 
-const MINIMUM_PLAYERS_TO_START = 3;
+const MINIMUM_PLAYERS_TO_START = 2;
 
 const elementRoomScreen = document.getElementById("roomScreen");
 const elementGameScreen = document.getElementById("gameScreen");
