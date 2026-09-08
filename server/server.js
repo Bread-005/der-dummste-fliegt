@@ -40,7 +40,7 @@ import {
     resolveFinaleQuestion,
     advanceFinaleQuestion,
 } from "./roomManager.js";
-import {loadQuestions} from "./questionRepository.js";
+import {loadQuestions, getAllQuestions} from "./questionRepository.js";
 
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
@@ -281,7 +281,9 @@ function revealTiebreakAnswerAndAdvance(roomCode) {
 
 /**
  * Broadcasts the start of a tiebreak re-vote (only alive players outside the tiebreak may vote) and
- * schedules its timeout.
+ * schedules its timeout. Also carries the just-revealed tiebreak question's answer history, so the
+ * answered-question dots for the two candidates survive a page reload during the re-vote, not just
+ * the live event.
  * @param {string} roomCode - The code of the room.
  */
 function startTiebreakVotingRound(roomCode) {
@@ -295,6 +297,7 @@ function startTiebreakVotingRound(roomCode) {
     const payload = {
         idPlayers: turn.idPlayers,
         players: turn.players,
+        answersByPlayer: turn.answersByPlayer,
         tiebreakVotingDurationMs: TIEBREAK_VOTING_DURATION_MS,
         tiebreakVotingStartedAt: Date.now(),
     };
@@ -336,9 +339,11 @@ function finishTiebreakVoting(roomCode) {
 
 /**
  * Broadcasts the current finale question to everyone in the room, together with the up-to-date
- * player list, and schedules the finale question's timeout.
+ * player list, and schedules the finale question's timeout. Also carries every finalist's answer
+ * history so far this finale, so the answered-question dots survive a page reload, not just the
+ * live event.
  * @param {string} roomCode - The code of the room.
- * @param {{question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}} finaleTurn -
+ * @param {{question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}} finaleTurn -
  *   The finale question to broadcast.
  */
 function broadcastFinaleTurn(roomCode, finaleTurn) {
@@ -348,6 +353,7 @@ function broadcastFinaleTurn(roomCode, finaleTurn) {
         questionIndex: finaleTurn.questionIndex,
         totalQuestions: finaleTurn.totalQuestions,
         correctCounts: finaleTurn.correctCounts,
+        answersByPlayer: finaleTurn.answersByPlayer,
         finaleDurationMs: FINALE_DURATION_MS,
         finaleStartedAt: Date.now(),
         players: getPublicPlayers(roomCode),
@@ -405,7 +411,7 @@ function revealFinaleAnswerAndAdvance(roomCode) {
  * asked, or ends the game outright if no further finale question could be produced (e.g. because
  * the two-finalist condition no longer held).
  * @param {string} roomCode - The code of the room.
- * @param {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>}|null} result -
+ * @param {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null} result -
  *   The result returned by `startFinale()` or `advanceFinaleQuestion()`.
  */
 function handleFinaleAdvanceResult(roomCode, result) {
@@ -430,8 +436,8 @@ function handleFinaleAdvanceResult(roomCode, result) {
  * host gets a button to start a fresh game (`startGame`), the same event used to start the very
  * first game; there is no automatic timeout back to the waiting room.
  * @param {string} roomCode - The code of the room.
- * @param {{idWinner: string|null, correctCounts: Object<string, number>}} result - The finale
- *   outcome returned by `advanceFinaleQuestion()`.
+ * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}} result -
+ *   The finale outcome returned by `advanceFinaleQuestion()`.
  */
 function finishFinale(roomCode, result) {
     clearTimeout(turnTimeouts.get(roomCode));
@@ -442,6 +448,7 @@ function finishFinale(roomCode, result) {
     const payload = {
         idWinner: result.idWinner,
         correctCounts: result.correctCounts,
+        answersByPlayer: result.answersByPlayer,
         players: getPublicPlayers(roomCode),
         resultDurationMs: FINALE_RESULT_DURATION_MS,
         resultStartedAt: Date.now(),
@@ -534,7 +541,7 @@ function stopGameIfActive(roomCode) {
  * fully tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has
  * now cast.
  * @param {string} roomCode - The code of the room.
- * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>}|null}|undefined} removalEffect -
+ * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}|undefined} removalEffect -
  *   The removal effect returned by `leaveRoom()`/`scheduleRemovalOnDisconnect()`.
  */
 function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
@@ -633,7 +640,7 @@ socketServer.on("connection", (socket) => {
         socketServer.to(roomCode).emit("roomSettingsUpdated", {settings});
     });
 
-    socket.on("startGame", ({roomCode}) => {
+    socket.on("startGame", async ({roomCode}) => {
         if (!isRoomHost(roomCode, socket.id)) {
             return;
         }
@@ -643,6 +650,14 @@ socketServer.on("connection", (socket) => {
                 message: "Das Spiel kann erst mit mindestens 2 Spielern gestartet werden.",
             });
             return;
+        }
+
+        if (getAllQuestions().length === 0) {
+            try {
+                await loadQuestions();
+            } catch (error) {
+                console.error("Fragen konnten nicht geladen werden:", error.message);
+            }
         }
 
         const turn = startGame(roomCode);

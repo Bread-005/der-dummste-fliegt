@@ -49,7 +49,7 @@ button:hover {
     align-items: center;
 }
 
-#settingsSection {
+#settingsSection:not([hidden]) {
     width: 100%;
     display: flex;
     flex-direction: column;

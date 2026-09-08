@@ -194,7 +194,7 @@ function findByIdSocket(idSocket) {
  * @param {string} roomCode - The code of the room.
  * @param {object} room - The internal room record.
  * @param {string} idPlayer - The persistent id of the player to remove.
- * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>}|null}}
+ * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}
  *   Whether the removed player was the one currently up in the question phase, which phase the
  *   game was in at the moment of removal (null if no game was running), whether the removed player
  *   was one of the two active tiebreak candidates, and, if the removed player was one of the two
@@ -212,6 +212,7 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
         ? {
               idWinner: room.game.finale.idPlayers.find((idFinalist) => idFinalist !== idPlayer),
               correctCounts: {...room.game.finale.correctCounts},
+              answersByPlayer: room.game.finale.answersGiven,
           }
         : null;
 
@@ -801,7 +802,7 @@ function startTiebreakQuestion(roomCode, idPlayers) {
     }
 
     room.game.phase = "tiebreakQuestion";
-    room.game.tiebreak = {idPlayers, question, answers: {}, wasCorrect: {}, votes: {}};
+    room.game.tiebreak = {idPlayers, question, answers: {}, wasCorrect: {}, votes: {}, answersByPlayer: {}};
 
     return buildTiebreakQuestionTurn(room);
 }
@@ -856,7 +857,7 @@ function haveBothTiebreakPlayersAnswered(roomCode) {
  * voting. Advances the shared question pool exactly like a normal turn's answer would, reshuffling
  * once every question has been asked. Must be called before `startTiebreakVoting()`.
  * @param {string} roomCode - The code of the room.
- * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[]}|null}
+ * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[], answersByPlayer: Object<string, Array<object>>}|null}
  *   The reveal info, or null if the room has no active tiebreak question.
  */
 function resolveTiebreakQuestion(roomCode) {
@@ -875,6 +876,9 @@ function resolveTiebreakQuestion(roomCode) {
         const player = room.players.find((candidate) => candidate.idPlayer === idPlayer);
 
         tiebreak.wasCorrect[idPlayer] = isCorrect;
+        tiebreak.answersByPlayer[idPlayer] = [
+            {questionText: question.text, answerGiven: answerText, correctAnswer: question.answer, isCorrect},
+        ];
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
     });
@@ -886,7 +890,13 @@ function resolveTiebreakQuestion(roomCode) {
         room.game.indexQuestion = 0;
     }
 
-    return {questionText: question.text, correctAnswer: question.answer, answers, idPlayers: tiebreak.idPlayers};
+    return {
+        questionText: question.text,
+        correctAnswer: question.answer,
+        answers,
+        idPlayers: tiebreak.idPlayers,
+        answersByPlayer: tiebreak.answersByPlayer,
+    };
 }
 
 /**
@@ -894,8 +904,10 @@ function resolveTiebreakQuestion(roomCode) {
  * of the two tiebreak candidates may cast a vote (see `submitTiebreakVote()`). Must be called after
  * `resolveTiebreakQuestion()`.
  * @param {string} roomCode - The code of the room.
- * @returns {{idPlayers: string[], players: Array<object>}|null} The tiebreak's candidate ids and
- *   the updated public player list, or null if the room has no active tiebreak question.
+ * @returns {{idPlayers: string[], players: Array<object>, answersByPlayer: Object<string, Array<object>>}|null}
+ *   The tiebreak's candidate ids, the updated public player list, and the just-revealed tiebreak
+ *   question's answer history (so the answered-question dots survive a rejoin during the re-vote),
+ *   or null if the room has no active tiebreak question.
  */
 function startTiebreakVoting(roomCode) {
     const room = rooms.get(roomCode);
@@ -907,7 +919,11 @@ function startTiebreakVoting(roomCode) {
     room.game.phase = "tiebreakVoting";
     room.game.tiebreak.votes = {};
 
-    return {idPlayers: room.game.tiebreak.idPlayers, players: toPublicPlayers(room)};
+    return {
+        idPlayers: room.game.tiebreak.idPlayers,
+        players: toPublicPlayers(room),
+        answersByPlayer: room.game.tiebreak.answersByPlayer,
+    };
 }
 
 /**
@@ -1047,8 +1063,8 @@ function countAlivePlayers(roomCode) {
 /**
  * Builds the public representation of the current finale question for a room's active finale.
  * @param {object} room - The internal room record.
- * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}}
- *   The current finale question turn.
+ * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<{questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>>}}
+ *   The current finale question turn, including each finalist's answer history so far this finale.
  */
 function buildFinaleTurn(room) {
     const finale = room.game.finale;
@@ -1060,6 +1076,7 @@ function buildFinaleTurn(room) {
         questionIndex: finale.indexQuestion,
         totalQuestions: finale.questions.length,
         correctCounts: {...finale.correctCounts},
+        answersByPlayer: finale.answersGiven,
     };
 }
 
@@ -1069,7 +1086,7 @@ function buildFinaleTurn(room) {
  * tracking each player's correct-answer count instead of lives. Only meant to be called once
  * exactly two alive players remain.
  * @param {string} roomCode - The code of the room.
- * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null}
+ * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The first finale question, or null if the room has no active game, does not have exactly two
  *   alive players, or no questions are available.
  */
@@ -1098,6 +1115,7 @@ function startFinale(roomCode) {
         indexQuestion: 0,
         idPlayers: alivePlayers.map((player) => player.idPlayer),
         answers: {},
+        answersGiven: {},
         correctCounts: Object.fromEntries(alivePlayers.map((player) => [player.idPlayer, 0])),
     };
 
@@ -1148,10 +1166,12 @@ function haveBothFinalePlayersAnswered(roomCode) {
 /**
  * Resolves the current finale question: fills in a placeholder answer for whichever finalist did
  * not answer in time, compares both answers against the correct one, and increments each
- * finalist's correct-answer count accordingly. Must be called before `advanceFinaleQuestion()`
- * moves the finale on to the next question.
+ * finalist's correct-answer count accordingly, and records the answer into each finalist's
+ * finale-wide answer history so a rejoining player's answered-question dots stay correct across a
+ * reload, not just for the single most recently revealed question. Must be called before
+ * `advanceFinaleQuestion()` moves the finale on to the next question.
  * @param {string} roomCode - The code of the room.
- * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>}|null}
+ * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The reveal info, or null if the room has no active finale.
  */
 function resolveFinaleQuestion(roomCode) {
@@ -1172,6 +1192,17 @@ function resolveFinaleQuestion(roomCode) {
             finale.correctCounts[idPlayer] += 1;
         }
 
+        if (!finale.answersGiven[idPlayer]) {
+            finale.answersGiven[idPlayer] = [];
+        }
+
+        finale.answersGiven[idPlayer].push({
+            questionText: question.text,
+            answerGiven: answerText,
+            correctAnswer: question.answer,
+            isCorrect,
+        });
+
         const player = room.players.find((candidate) => candidate.idPlayer === idPlayer);
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
@@ -1182,6 +1213,7 @@ function resolveFinaleQuestion(roomCode) {
         correctAnswer: question.answer,
         answers,
         correctCounts: {...finale.correctCounts},
+        answersByPlayer: finale.answersGiven,
     };
 }
 
@@ -1189,7 +1221,7 @@ function resolveFinaleQuestion(roomCode) {
  * Advances the finale to its next question, or, once every finale question has been asked,
  * determines the winner (whoever answered more questions correctly overall; null if tied).
  * @param {string} roomCode - The code of the room.
- * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>}|null}
+ * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The next finale question, the finale outcome, or null if the room has no active finale.
  */
 function advanceFinaleQuestion(roomCode) {
@@ -1210,7 +1242,12 @@ function advanceFinaleQuestion(roomCode) {
         const idWinner =
             firstScore === secondScore ? null : firstScore > secondScore ? idFirstPlayer : idSecondPlayer;
 
-        return {phase: "finaleFinished", idWinner, correctCounts: {...finale.correctCounts}};
+        return {
+            phase: "finaleFinished",
+            idWinner,
+            correctCounts: {...finale.correctCounts},
+            answersByPlayer: finale.answersGiven,
+        };
     }
 
     return buildFinaleTurn(room);

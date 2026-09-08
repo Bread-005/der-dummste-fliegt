@@ -5,6 +5,7 @@ const MINIMUM_PLAYERS_TO_START = 2;
 
 const elementRoomScreen = document.getElementById("roomScreen");
 const elementGameScreen = document.getElementById("gameScreen");
+const settingsSection = document.getElementById("settingsSection");
 const buttonStartGame = document.getElementById("buttonStartGame");
 const buttonLeaveRoom = document.getElementById("buttonLeaveRoom");
 const timerBarFill = document.getElementById("timerBarFill");
@@ -276,6 +277,8 @@ function renderPlayerLists(idOwnPlayer) {
 
     renderPlayers(listPlayersInGame, alivePlayers, idCurrentTurnPlayer);
     renderDeadPlayers(deadPlayers);
+
+    settingsSection.hidden = hasGameStarted;
 
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     renderStartingLivesSetting(ownPlayer?.isHost ?? false);
@@ -656,11 +659,13 @@ if (!playerName || !roomCode) {
      * Applies a "finaleStarted" event's data to the UI: shows the current finale question, the
      * left/right answer inputs (own side enabled only), and starts the finale question's timer
      * bar. Used both for the live event and to catch a rejoining player up on an already-running
-     * finale question.
-     * @param {{question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, finaleDurationMs: number, finaleStartedAt: number, players: Array<object>}} data -
+     * finale question — `answersByPlayer` carries every finalist's answer history so far this
+     * finale, so a rejoining player's answered-question dots are correct even past the first
+     * question, not just right after a reload during question 1.
+     * @param {{question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: object, finaleDurationMs: number, finaleStartedAt: number, players: Array<object>}} data -
      *   The finale question data.
      */
-    function applyFinaleStarted({question, idPlayers, questionIndex, totalQuestions, finaleDurationMs, finaleStartedAt, players}) {
+    function applyFinaleStarted({question, idPlayers, questionIndex, totalQuestions, answersByPlayer, finaleDurationMs, finaleStartedAt, players}) {
         currentPlayers = players;
         hasGameStarted = true;
         idCurrentTurnPlayer = null;
@@ -669,10 +674,7 @@ if (!playerName || !roomCode) {
         isFinalePhase = true;
         finaleIdPlayers = idPlayers;
         hasSubmittedFinaleAnswer = false;
-
-        if (questionIndex === 0) {
-            finaleAnswersByPlayer = {};
-        }
+        finaleAnswersByPlayer = answersByPlayer;
 
         listPlayersInGame.classList.remove("votingActive", "voted");
         resetTiebreakUi();
@@ -699,13 +701,13 @@ if (!playerName || !roomCode) {
 
     /**
      * Applies a "finaleAnswerRevealed" event's data to the UI: shows both finalists' answers next
-     * to the correct answer, records them into each finalist's answer history so the shared
-     * player list's answered-question dots grow accordingly, and freezes the timer bar. Used both
-     * for the live event and to catch a rejoining player up on an already-running finale reveal.
-     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>}} data -
+     * to the correct answer, takes over the server's up-to-date answer history for the shared
+     * player list's answered-question dots, and freezes the timer bar. Used both for the live event
+     * and to catch a rejoining player up on an already-running finale reveal.
+     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: object}} data -
      *   The finale reveal data.
      */
-    function applyFinaleAnswerRevealed({questionText, correctAnswer, answers}) {
+    function applyFinaleAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
         isFinalePhase = true;
         finaleIdPlayers = answers.map((answer) => answer.idPlayer);
         finaleAnswerRow.hidden = true;
@@ -722,18 +724,7 @@ if (!playerName || !roomCode) {
         textFinaleCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
         finaleReveal.hidden = false;
 
-        for (const answer of answers) {
-            if (!finaleAnswersByPlayer[answer.idPlayer]) {
-                finaleAnswersByPlayer[answer.idPlayer] = [];
-            }
-
-            finaleAnswersByPlayer[answer.idPlayer].push({
-                questionText,
-                answerGiven: answer.answerText,
-                correctAnswer,
-                isCorrect: answer.isCorrect,
-            });
-        }
+        finaleAnswersByPlayer = answersByPlayer;
 
         renderPlayerLists(idPlayer);
     }
@@ -746,12 +737,13 @@ if (!playerName || !roomCode) {
      * time already elapsed, so a rejoining player is caught up correctly), the host gets a button
      * to start a fresh game; other players see no button and just keep waiting. Used both for the
      * live event and to catch a rejoining player up on an already-running finale result display.
-     * @param {{idWinner: string|null, correctCounts: Object<string, number>, players: Array<object>, resultDurationMs: number, resultStartedAt: number}} data -
+     * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: object, players: Array<object>, resultDurationMs: number, resultStartedAt: number}} data -
      *   The finale-result data.
      */
-    function applyFinaleResolved({idWinner, correctCounts, players, resultDurationMs, resultStartedAt}) {
+    function applyFinaleResolved({idWinner, correctCounts, answersByPlayer, players, resultDurationMs, resultStartedAt}) {
         isFinalePhase = true;
         finaleIdPlayers = Object.keys(correctCounts);
+        finaleAnswersByPlayer = answersByPlayer;
         currentPlayers = players;
         renderPlayerLists(idPlayer);
 
@@ -866,10 +858,10 @@ if (!playerName || !roomCode) {
      * else's dots stay hidden for the duration of the tiebreak, see `renderPlayers()`), and freezes
      * the timer bar. Used both for the live event and to catch a rejoining player up on an
      * already-running tiebreak reveal.
-     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>}} data -
+     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, answersByPlayer: object}} data -
      *   The tiebreak reveal data.
      */
-    function applyTiebreakAnswerRevealed({questionText, correctAnswer, answers}) {
+    function applyTiebreakAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
         isTiebreakActive = true;
         tiebreakIdPlayers = answers.map((answer) => answer.idPlayer);
         tiebreakAnswerRow.hidden = true;
@@ -886,18 +878,7 @@ if (!playerName || !roomCode) {
         textTiebreakCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
         tiebreakReveal.hidden = false;
 
-        for (const answer of answers) {
-            if (!tiebreakAnswersByPlayer[answer.idPlayer]) {
-                tiebreakAnswersByPlayer[answer.idPlayer] = [];
-            }
-
-            tiebreakAnswersByPlayer[answer.idPlayer].push({
-                questionText,
-                answerGiven: answer.answerText,
-                correctAnswer,
-                isCorrect: answer.isCorrect,
-            });
-        }
+        tiebreakAnswersByPlayer = answersByPlayer;
 
         renderPlayerLists(idPlayer);
     }
@@ -908,14 +889,15 @@ if (!playerName || !roomCode) {
      * restyled so only the candidates are clickable (see `renderPlayers()` and the click handler
      * below). Used both for the live event and to catch a rejoining player up on an
      * already-running tiebreak re-vote.
-     * @param {{idPlayers: string[], players: Array<object>, tiebreakVotingDurationMs: number, tiebreakVotingStartedAt: number}} data -
+     * @param {{idPlayers: string[], players: Array<object>, answersByPlayer: object, tiebreakVotingDurationMs: number, tiebreakVotingStartedAt: number}} data -
      *   The tiebreak re-vote data.
      */
-    function applyTiebreakVotingStarted({idPlayers, players, tiebreakVotingDurationMs, tiebreakVotingStartedAt}) {
+    function applyTiebreakVotingStarted({idPlayers, players, answersByPlayer, tiebreakVotingDurationMs, tiebreakVotingStartedAt}) {
         currentPlayers = players;
         idCurrentTurnPlayer = null;
         isTiebreakActive = true;
         tiebreakIdPlayers = idPlayers;
+        tiebreakAnswersByPlayer = answersByPlayer;
         isTiebreakVotingPhase = true;
         hasVotedThisRound = false;
 
