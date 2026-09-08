@@ -5,7 +5,9 @@ const DISCONNECT_GRACE_PERIOD_MS = 5000;
 const DEFAULT_STARTING_LIVES = 3;
 const MIN_STARTING_LIVES = 1;
 const MAX_STARTING_LIVES = 5;
-const QUESTIONS_PER_PLAYER_PER_ROUND = 1;
+const DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2;
+const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
+const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
 const MINIMUM_PLAYERS_TO_START = 3;
 const FINALE_QUESTION_COUNT = 5;
 
@@ -251,7 +253,7 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
  * @param {string} idPlayer - The persistent id of the creating player.
  * @param {string} idSocket - The current socket id of the creating player.
  * @param {string} playerName - The display name of the creating player.
- * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number}}} The created room.
+ * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number}}} The created room.
  */
 function createRoom(idPlayer, idSocket, playerName) {
     const roomCode = generateRoomCode();
@@ -259,7 +261,10 @@ function createRoom(idPlayer, idSocket, playerName) {
         players: [{idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: DEFAULT_STARTING_LIVES}],
         idHost: idPlayer,
         game: null,
-        settings: {startingLives: DEFAULT_STARTING_LIVES},
+        settings: {
+            startingLives: DEFAULT_STARTING_LIVES,
+            questionsPerPlayerPerRound: DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND,
+        },
     };
 
     rooms.set(roomCode, room);
@@ -274,7 +279,7 @@ function createRoom(idPlayer, idSocket, playerName) {
  * @param {string} idPlayer - The persistent id of the joining player.
  * @param {string} idSocket - The current socket id of the joining player.
  * @param {string} playerName - The display name of the joining player.
- * @returns {{players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number}}|null}
+ * @returns {{players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number}}|null}
  *   The updated player list and current room settings, or null if the room does not exist.
  */
 function joinRoom(roomCode, idPlayer, idSocket, playerName) {
@@ -472,7 +477,7 @@ function isCurrentPlayerSocket(roomCode, idSocket) {
 function hasEveryPlayerAnsweredEnough(room) {
     return room.players
         .filter(isPlayerAlive)
-        .every((player) => (room.game.answeredCounts[player.idPlayer] ?? 0) >= QUESTIONS_PER_PLAYER_PER_ROUND);
+        .every((player) => (room.game.answeredCounts[player.idPlayer] ?? 0) >= room.settings.questionsPerPlayerPerRound);
 }
 
 /**
@@ -1231,6 +1236,34 @@ function updateStartingLives(roomCode, idSocket, startingLives) {
 }
 
 /**
+ * Updates a room's questions-per-player-per-round setting. Only the room's host may change it, and
+ * only while no game is in progress in that room, since changing it mid-round would desync the
+ * already-shown answered-question dots and the round's voting-phase transition.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} idSocket - The socket id of the player requesting the change.
+ * @param {number} questionsPerPlayerPerRound - The requested number of questions per player per
+ *   round, clamped to `[MIN_QUESTIONS_PER_PLAYER_PER_ROUND, MAX_QUESTIONS_PER_PLAYER_PER_ROUND]`.
+ * @returns {{startingLives: number, questionsPerPlayerPerRound: number}|null} The room's updated
+ *   settings, or null if the change was rejected (room not found, requester not host, or a game is
+ *   currently running).
+ */
+function updateQuestionsPerPlayerPerRound(roomCode, idSocket, questionsPerPlayerPerRound) {
+    const room = rooms.get(roomCode);
+
+    if (!room || room.game || !isRoomHost(roomCode, idSocket)) {
+        return null;
+    }
+
+    const clampedQuestionsPerPlayerPerRound = Math.min(
+        MAX_QUESTIONS_PER_PLAYER_PER_ROUND,
+        Math.max(MIN_QUESTIONS_PER_PLAYER_PER_ROUND, Math.round(questionsPerPlayerPerRound)),
+    );
+    room.settings.questionsPerPlayerPerRound = clampedQuestionsPerPlayerPerRound;
+
+    return {...room.settings};
+}
+
+/**
  * Finds the code of the room a socket currently belongs to, without modifying anything.
  * @param {string} idSocket - The socket id to search for.
  * @returns {string|null} The room code, or null if the socket belongs to no room.
@@ -1269,6 +1302,7 @@ export {
     isRoomHost,
     hasEnoughPlayersToStart,
     updateStartingLives,
+    updateQuestionsPerPlayerPerRound,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,

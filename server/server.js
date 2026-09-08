@@ -9,6 +9,7 @@ import {
     isRoomHost,
     hasEnoughPlayersToStart,
     updateStartingLives,
+    updateQuestionsPerPlayerPerRound,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,
@@ -612,8 +613,11 @@ socketServer.on("connection", (socket) => {
         socket.to(roomCode).emit("playersUpdated", {players});
     });
 
-    socket.on("updateRoomSettings", ({roomCode, startingLives}) => {
-        const settings = updateStartingLives(roomCode, socket.id, startingLives);
+    socket.on("updateRoomSettings", ({roomCode, startingLives, questionsPerPlayerPerRound}) => {
+        const settings =
+            startingLives !== undefined
+                ? updateStartingLives(roomCode, socket.id, startingLives)
+                : updateQuestionsPerPlayerPerRound(roomCode, socket.id, questionsPerPlayerPerRound);
 
         if (!settings) {
             return;

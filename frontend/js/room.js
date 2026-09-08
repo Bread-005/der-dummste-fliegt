@@ -52,13 +52,20 @@ const buttonRestartGame = document.getElementById("buttonRestartGame");
 const textStartingLivesValue = document.getElementById("textStartingLivesValue");
 const buttonStartingLivesDecrease = document.getElementById("buttonStartingLivesDecrease");
 const buttonStartingLivesIncrease = document.getElementById("buttonStartingLivesIncrease");
+const textQuestionsPerPlayerPerRoundValue = document.getElementById("textQuestionsPerPlayerPerRoundValue");
+const buttonQuestionsPerPlayerPerRoundDecrease = document.getElementById("buttonQuestionsPerPlayerPerRoundDecrease");
+const buttonQuestionsPerPlayerPerRoundIncrease = document.getElementById("buttonQuestionsPerPlayerPerRoundIncrease");
 
 const MIN_STARTING_LIVES = 1;
 const MAX_STARTING_LIVES = 5;
 const DEFAULT_STARTING_LIVES = 3;
+const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
+const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
+const DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2;
 
 let currentPlayers = [];
 let startingLives = DEFAULT_STARTING_LIVES;
+let questionsPerPlayerPerRound = DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND;
 let idCurrentTurnPlayer = null;
 let hasGameStarted = false;
 let isVotingPhase = false;
@@ -272,6 +279,7 @@ function renderPlayerLists(idOwnPlayer) {
 
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     renderStartingLivesSetting(ownPlayer?.isHost ?? false);
+    renderQuestionsPerPlayerPerRoundSetting(ownPlayer?.isHost ?? false);
 
     if (hasGameStarted) {
         buttonStartGame.hidden = true;
@@ -296,6 +304,25 @@ function renderStartingLivesSetting(isHost) {
     const canEdit = isHost && !hasGameStarted;
     buttonStartingLivesDecrease.disabled = !canEdit || startingLives <= MIN_STARTING_LIVES;
     buttonStartingLivesIncrease.disabled = !canEdit || startingLives >= MAX_STARTING_LIVES;
+}
+
+/**
+ * Renders the questions-per-player-per-round setting control: shows the current value to everyone,
+ * and shows the +/- buttons only to the host, enabled only while no game is currently running in
+ * the room.
+ * @param {boolean} isHost - Whether the viewing player is the room's host.
+ */
+function renderQuestionsPerPlayerPerRoundSetting(isHost) {
+    textQuestionsPerPlayerPerRoundValue.textContent = String(questionsPerPlayerPerRound);
+
+    buttonQuestionsPerPlayerPerRoundDecrease.hidden = !isHost;
+    buttonQuestionsPerPlayerPerRoundIncrease.hidden = !isHost;
+
+    const canEdit = isHost && !hasGameStarted;
+    buttonQuestionsPerPlayerPerRoundDecrease.disabled =
+        !canEdit || questionsPerPlayerPerRound <= MIN_QUESTIONS_PER_PLAYER_PER_ROUND;
+    buttonQuestionsPerPlayerPerRoundIncrease.disabled =
+        !canEdit || questionsPerPlayerPerRound >= MAX_QUESTIONS_PER_PLAYER_PER_ROUND;
 }
 
 /**
@@ -966,6 +993,7 @@ if (!playerName || !roomCode) {
     socket.on("roomJoined", ({players, settings, gameState}) => {
         currentPlayers = players;
         startingLives = settings.startingLives;
+        questionsPerPlayerPerRound = settings.questionsPerPlayerPerRound;
         renderPlayerLists(idPlayer);
         applyGameStateOnRejoin(gameState);
     });
@@ -977,6 +1005,7 @@ if (!playerName || !roomCode) {
 
     socket.on("roomSettingsUpdated", ({settings}) => {
         startingLives = settings.startingLives;
+        questionsPerPlayerPerRound = settings.questionsPerPlayerPerRound;
         renderPlayerLists(idPlayer);
     });
 
@@ -1060,6 +1089,14 @@ if (!playerName || !roomCode) {
 
     buttonStartingLivesIncrease.addEventListener("click", () => {
         socket.emit("updateRoomSettings", {roomCode, startingLives: startingLives + 1});
+    });
+
+    buttonQuestionsPerPlayerPerRoundDecrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, questionsPerPlayerPerRound: questionsPerPlayerPerRound - 1});
+    });
+
+    buttonQuestionsPerPlayerPerRoundIncrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, questionsPerPlayerPerRound: questionsPerPlayerPerRound + 1});
     });
 
     inputAnswer.addEventListener("keydown", (event) => {
