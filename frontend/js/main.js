@@ -26,6 +26,12 @@ if (roomCodeFromUrl) {
     inputRoomCode.hidden = true;
     buttonCreateRoom.hidden = true;
     inputPlayerName.focus();
+
+    inputPlayerName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            buttonJoinRoom.click();
+        }
+    });
 }
 
 buttonCreateRoom.addEventListener("click", () => {

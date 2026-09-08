@@ -11,3 +11,7 @@ dist/
 build/
 coverage/
 *.tmp
+.dockerignore
+docker-compose.yml
+Dockerfile
+package-lock.json

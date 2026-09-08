@@ -183,14 +183,18 @@ function findByIdSocket(idSocket) {
  * applies to a running tiebreak's outside votes. If the removed player was one of the two tiebreak
  * candidates, the tiebreak cannot be completed anymore and is abandoned outright (`room.game.phase`
  * reverts to `"voting"`), leaving it to the caller to resolve the round with nobody losing a life
- * for it, exactly as a fully-tied vote would.
+ * for it, exactly as a fully-tied vote would. If the removed player was one of the two finale
+ * contestants, the finale can no longer be played out either, but unlike the tiebreak case it is
+ * not simply abandoned: the remaining finalist is declared the winner (`finaleResult`), since the
+ * finale strictly needs two contestants and only one is left standing.
  * @param {string} roomCode - The code of the room.
  * @param {object} room - The internal room record.
  * @param {string} idPlayer - The persistent id of the player to remove.
- * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean}}
+ * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>}|null}}
  *   Whether the removed player was the one currently up in the question phase, which phase the
- *   game was in at the moment of removal (null if no game was running), and whether the removed
- *   player was one of the two active tiebreak candidates.
+ *   game was in at the moment of removal (null if no game was running), whether the removed player
+ *   was one of the two active tiebreak candidates, and, if the removed player was one of the two
+ *   finale contestants, the finale outcome declaring the remaining contestant the winner.
  */
 function removePlayerFromRoom(roomCode, room, idPlayer) {
     const phaseAtRemoval = room.game?.phase ?? null;
@@ -199,12 +203,19 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
     const wasTiebreakCandidate =
         (phaseAtRemoval === "tiebreakQuestion" || phaseAtRemoval === "tiebreakVoting") &&
         Boolean(room.game.tiebreak.idPlayers.includes(idPlayer));
+    const wasFinaleContestant = phaseAtRemoval === "finale" && room.game.finale.idPlayers.includes(idPlayer);
+    const finaleResult = wasFinaleContestant
+        ? {
+              idWinner: room.game.finale.idPlayers.find((idFinalist) => idFinalist !== idPlayer),
+              correctCounts: {...room.game.finale.correctCounts},
+          }
+        : null;
 
     room.players = room.players.filter((player) => player.idPlayer !== idPlayer);
 
     if (room.players.length === 0) {
         rooms.delete(roomCode);
-        return {wasCurrentQuestionTurn: false, phaseAtRemoval: null, wasTiebreakCandidate: false};
+        return {wasCurrentQuestionTurn: false, phaseAtRemoval: null, wasTiebreakCandidate: false, finaleResult: null};
     }
 
     if (room.idHost === idPlayer) {
@@ -230,7 +241,7 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
         delete room.game.tiebreak;
     }
 
-    return {wasCurrentQuestionTurn, phaseAtRemoval, wasTiebreakCandidate};
+    return {wasCurrentQuestionTurn, phaseAtRemoval, wasTiebreakCandidate, finaleResult};
 }
 
 /**

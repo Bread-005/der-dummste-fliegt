@@ -55,8 +55,18 @@
   neue Zugreihenfolge, siehe `startGame()`). Solange der Host nicht klickt, bleibt der
   Sieger-Bildschirm für alle unverändert stehen; es gibt keinen serverseitigen Timeout mehr, der
   das Spiel nach dem Finale von selbst beendet. Verlässt einer der beiden Finalisten den Raum
-  (Verlassen-Button oder Disconnect nach Ablauf der Gnadenfrist), wird das Spiel sofort beendet,
-  da das Finale zwingend zwei Spieler voraussetzt; sind nach einer normalen Voting-Auflösung
+  (Verlassen-Button oder Disconnect nach Ablauf der Gnadenfrist), wird das Finale nicht einfach
+  abgebrochen: Da es zwingend zwei Spieler voraussetzt, wird stattdessen sofort der verbleibende
+  Finalist zum Sieger erklärt — `removePlayerFromRoom()` in `roomManager.js` liefert dafür (nur
+  wenn der entfernte Spieler tatsächlich einer der beiden `finale.idPlayers` war) ein
+  `finaleResult` mit `idWinner` (der andere Finalist) und den bis dahin erzielten
+  `correctCounts`; `handlePlayerRemovedDuringGame()` in `server.js` reicht dieses `finaleResult`
+  unverändert an `finishFinale()` durch — dieselbe Funktion, die auch ein regulär zu Ende
+  gespieltes Finale auflöst (inklusive Leben-Reset über `revivePlayersAfterFinale()` und dem
+  ganz normalen `finaleResolved`-Sieger-Bildschirm samt Host-Neustart-Button). Verlässt dagegen
+  während des Finales ein bereits ausgeschiedener ("toter") Zuschauer, der nicht zu den beiden
+  Finalisten zählt, bleibt es beim bisherigen Verhalten (`stopGameIfActive()`); sind nach einer
+  normalen Voting-Auflösung
   dagegen weniger als zwei Spieler übrig (die reguläre `votingResolved`-Anzeige lief in diesem
   Fall ganz normal durch), endet das Spiel ebenfalls direkt, ohne Finale oder automatischen
   Neustart. Während

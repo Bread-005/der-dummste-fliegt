@@ -518,12 +518,14 @@ function stopGameIfActive(roomCode) {
  * voted, resolves the vote immediately. A player removed while their just-given answer is being
  * revealed, or while a voting result is already being displayed, is left alone — the
  * already-scheduled timeout for that phase moves things along on its own once it runs out. The
- * finale strictly requires exactly two players, so removing either finalist at any point simply
- * ends the game. A tiebreak strictly requires its two candidates; removing either of them abandons
- * the tiebreak and resolves the round immediately with nobody losing a life for it (like a fully
- * tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has now cast.
+ * finale strictly requires exactly two contestants: if one of them is removed, the remaining
+ * contestant is declared the winner (`finalizeAbandonedFinale()`) instead of just ending the game
+ * without a result. A tiebreak strictly requires its two candidates; removing either of them
+ * abandons the tiebreak and resolves the round immediately with nobody losing a life for it (like a
+ * fully tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has
+ * now cast.
  * @param {string} roomCode - The code of the room.
- * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean}|undefined} removalEffect -
+ * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>}|null}|undefined} removalEffect -
  *   The removal effect returned by `leaveRoom()`/`scheduleRemovalOnDisconnect()`.
  */
 function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
@@ -532,7 +534,12 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
     }
 
     if (removalEffect.phaseAtRemoval === "finale") {
-        stopGameIfActive(roomCode);
+        if (removalEffect.finaleResult) {
+            finishFinale(roomCode, removalEffect.finaleResult);
+        } else {
+            stopGameIfActive(roomCode);
+        }
+
         return;
     }
 
