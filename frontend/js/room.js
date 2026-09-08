@@ -3,6 +3,7 @@ import {getOrCreatePlayerId} from "./playerIdentity.js";
 
 const MINIMUM_PLAYERS_TO_START = 2;
 
+const connectingScreen = document.getElementById("connectingScreen");
 const elementRoomScreen = document.getElementById("roomScreen");
 const elementGameScreen = document.getElementById("gameScreen");
 const settingsSection = document.getElementById("settingsSection");
@@ -408,6 +409,11 @@ if (!playerName || !roomCode) {
     window.location.href = roomCode ? `index.html?room=${roomCode}` : "index.html";
 } else {
     const socket = connectToServer();
+
+    socket.on("connect", () => {
+        connectingScreen.hidden = true;
+        elementRoomScreen.hidden = false;
+    });
 
     /**
      * Sends the currently typed answer to the server and hides the input until the next turn.

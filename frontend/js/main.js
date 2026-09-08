@@ -1,6 +1,8 @@
 import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
 
+const connectingScreen = document.getElementById("connectingScreen");
+const lobbyScreen = document.getElementById("lobbyScreen");
 const inputPlayerName = document.getElementById("inputPlayerName");
 const inputRoomCode = document.getElementById("inputRoomCode");
 const buttonCreateRoom = document.getElementById("buttonCreateRoom");
@@ -8,6 +10,11 @@ const buttonJoinRoom = document.getElementById("buttonJoinRoom");
 
 const idPlayer = getOrCreatePlayerId();
 const socket = connectToServer();
+
+socket.on("connect", () => {
+    connectingScreen.hidden = true;
+    lobbyScreen.hidden = false;
+});
 
 /**
  * Reads the room code from the "room" query parameter (e.g. "index.html?room=<roomCode>"), so an
