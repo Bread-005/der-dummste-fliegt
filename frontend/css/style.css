@@ -49,9 +49,15 @@ button:hover {
     align-items: center;
 }
 
-#connectingScreen {
+#connectingScreen:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
     align-items: center;
+    justify-content: center;
     text-align: center;
+    background-color: rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
 }
 
 .spinner {

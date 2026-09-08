@@ -412,7 +412,6 @@ if (!playerName || !roomCode) {
 
     socket.on("connect", () => {
         connectingScreen.hidden = true;
-        elementRoomScreen.hidden = false;
     });
 
     /**
