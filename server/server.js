@@ -40,7 +40,7 @@ import {
     resolveFinaleQuestion,
     advanceFinaleQuestion,
 } from "./roomManager.js";
-import {loadQuestions, getAllQuestions} from "./questionRepository.js";
+import {loadQuestions, loadQuestionsWithRetry, getAllQuestions} from "./questionRepository.js";
 
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
@@ -747,11 +747,7 @@ socketServer.on("connection", (socket) => {
     });
 });
 
-try {
-    await loadQuestions();
-} catch (error) {
-    console.error("Fragen konnten nicht geladen werden:", error.message);
-}
+loadQuestionsWithRetry();
 
 httpServer.listen(process.env.PORT || 3050, "0.0.0.0", () => {
     console.log("Access game on https://bread-005.github.io/der-dummste-fliegt/index.html");
