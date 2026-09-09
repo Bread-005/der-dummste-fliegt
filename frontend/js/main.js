@@ -14,6 +14,10 @@ socket.on("connect", () => {
     connectingScreen.hidden = true;
 });
 
+socket.on("disconnect", () => {
+    connectingScreen.hidden = false;
+});
+
 /**
  * Reads the room code from the "room" query parameter (e.g. "index.html?room=<roomCode>"), so an
  * invite link can prefill the room code field instead of requiring it to be typed in manually.

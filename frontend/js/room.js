@@ -412,6 +412,11 @@ if (!playerName || !roomCode) {
 
     socket.on("connect", () => {
         connectingScreen.hidden = true;
+        socket.emit("joinRoom", {playerName, roomCode, idPlayer});
+    });
+
+    socket.on("disconnect", () => {
+        connectingScreen.hidden = false;
     });
 
     /**
@@ -974,8 +979,6 @@ if (!playerName || !roomCode) {
             applyFinaleResolved(gameState);
         }
     }
-
-    socket.emit("joinRoom", {playerName, roomCode, idPlayer});
 
     socket.on("roomJoined", ({players, settings, gameState}) => {
         currentPlayers = players;
