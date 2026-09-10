@@ -1292,6 +1292,10 @@ function updateStartingLives(roomCode, idSocket, startingLives) {
     const clampedStartingLives = Math.min(MAX_STARTING_LIVES, Math.max(MIN_STARTING_LIVES, Math.round(startingLives)));
     room.settings.startingLives = clampedStartingLives;
 
+    room.players.forEach((player) => {
+        player.lives = clampedStartingLives;
+    });
+
     return {...room.settings};
 }
 

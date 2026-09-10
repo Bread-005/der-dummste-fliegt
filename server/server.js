@@ -638,6 +638,7 @@ socketServer.on("connection", (socket) => {
         }
 
         socketServer.to(roomCode).emit("roomSettingsUpdated", {settings});
+        socketServer.to(roomCode).emit("playersUpdated", {players: getPublicPlayers(roomCode)});
     });
 
     socket.on("startGame", async ({roomCode}) => {

@@ -2,6 +2,7 @@ import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
 
 const MINIMUM_PLAYERS_TO_START = 2;
+const FINALE_QUESTION_COUNT = 5;
 
 const connectingScreen = document.getElementById("connectingScreen");
 const elementRoomScreen = document.getElementById("roomScreen");
@@ -144,23 +145,31 @@ function renderPlayerHearts(lives) {
 }
 
 /**
- * Renders a player's answered-questions progress as one dot per question already answered in the
- * current round: green if answered correctly, grey otherwise. Wherever answer history is already
- * known for a dot, it also shows the question, the player's answer, and the correct answer as a
- * hover tooltip.
+ * Renders a player's answered-questions progress as one dot per question of the round: green if
+ * answered correctly, grey if answered incorrectly, and a light-grey outlined placeholder for
+ * questions not yet answered. Wherever answer history is already known for a dot, it also shows
+ * the question, the player's answer, and the correct answer as a hover tooltip.
  * @param {string} playerName - The player's display name, used in the tooltip's answer line.
  * @param {number} answeredCount - How many questions the player has already answered this round.
  * @param {Array<{questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>|undefined} answerHistory -
  *   This player's answer history for the round known so far.
- * @returns {HTMLElement} A row element containing one dot per answered question.
+ * @param {number} totalSlots - The total number of questions this player answers per round, so
+ *   not-yet-answered questions can be shown as placeholder dots evenly alongside answered ones.
+ * @returns {HTMLElement} A row element containing one dot per question of the round.
  */
-function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory) {
+function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory, totalSlots) {
     const dotsRow = document.createElement("div");
     dotsRow.classList.add("playerAnsweredDots");
 
-    for (let indexDot = 0; indexDot < answeredCount; indexDot++) {
+    for (let indexDot = 0; indexDot < totalSlots; indexDot++) {
         const dot = document.createElement("span");
         dot.classList.add("answeredDot");
+
+        if (indexDot >= answeredCount) {
+            dot.classList.add("unansweredDot");
+            dotsRow.appendChild(dot);
+            continue;
+        }
 
         const answerEntry = answerHistory?.[indexDot];
 
@@ -228,23 +237,29 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
         // whichever is higher to avoid the just-answered dot briefly disappearing.
         let answerHistory;
         let answeredCount;
+        let totalAnswerSlots;
 
         if (isFinalist) {
             answerHistory = finaleAnswersByPlayer[player.idPlayer];
             answeredCount = answerHistory?.length ?? 0;
+            totalAnswerSlots = FINALE_QUESTION_COUNT;
         } else if (isTiebreakActive) {
             // While a tiebreak is running, every player's normal round dots are hidden — only the
             // two tiebreak candidates get dots at all, showing their tiebreak answers instead.
             answerHistory = isTiebreakCandidate ? tiebreakAnswersByPlayer[player.idPlayer] : undefined;
             answeredCount = answerHistory?.length ?? 0;
+            totalAnswerSlots = answeredCount;
         } else {
             answerHistory = answersByPlayerThisRound[player.idPlayer];
             answeredCount = Math.max(player.answeredCount, answerHistory?.length ?? 0);
+            totalAnswerSlots = Math.max(questionsPerPlayerPerRound, answeredCount);
         }
 
         itemPlayer.appendChild(renderPlayerHearts(player.lives));
         itemPlayer.appendChild(nameElement);
-        itemPlayer.appendChild(renderPlayerAnsweredDots(player.name, answeredCount, answerHistory));
+        itemPlayer.appendChild(
+            renderPlayerAnsweredDots(player.name, answeredCount, answerHistory, totalAnswerSlots),
+        );
 
         targetList.appendChild(itemPlayer);
     }

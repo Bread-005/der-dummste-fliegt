@@ -418,19 +418,25 @@ button:hover {
 .playerAnsweredDots {
     display: flex;
     gap: 6px;
-    min-height: 14px;
+    min-height: 20px;
 }
 
 .answeredDot {
     position: relative;
-    width: 14px;
-    height: 14px;
+    box-sizing: border-box;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background-color: #888;
 }
 
 .answeredDot.correctAnswerDot {
     background-color: #2e9e44;
+}
+
+.answeredDot.unansweredDot {
+    background-color: transparent;
+    border: 1px solid gray;
 }
 
 #deadPlayersBox {
