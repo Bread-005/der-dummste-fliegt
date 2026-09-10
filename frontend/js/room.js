@@ -51,7 +51,6 @@ const textFinaleAnswerRight = document.getElementById("textFinaleAnswerRight");
 const textFinaleCorrectAnswer = document.getElementById("textFinaleCorrectAnswer");
 const finaleResult = document.getElementById("finaleResult");
 const textFinaleWinner = document.getElementById("textFinaleWinner");
-const buttonRestartGame = document.getElementById("buttonRestartGame");
 const textStartingLivesValue = document.getElementById("textStartingLivesValue");
 const buttonStartingLivesDecrease = document.getElementById("buttonStartingLivesDecrease");
 const buttonStartingLivesIncrease = document.getElementById("buttonStartingLivesIncrease");
@@ -75,11 +74,11 @@ let isVotingPhase = false;
 let hasVotedThisRound = false;
 let answersByPlayerThisRound = {};
 let activeTimer = null;
+let autoSubmitAnswerTimeout = null;
 let isFinalePhase = false;
 let finaleIdPlayers = [];
 let finaleAnswersByPlayer = {};
 let hasSubmittedFinaleAnswer = false;
-let finaleRestartRevealTimeout = null;
 let isTiebreakActive = false;
 let isTiebreakVotingPhase = false;
 let tiebreakIdPlayers = [];
@@ -192,8 +191,8 @@ function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory, tota
 
 /**
  * Renders a list of players into a target list element: a row of life hearts, the name (with a
- * crown for the host, golden border for whoever's turn it currently is), and a row of dots for
- * the questions already answered this round. For a finalist during the finale, the dots reflect
+ * golden border for whoever's turn it currently is), and a row of dots for the questions already
+ * answered this round. For a finalist during the finale, the dots reflect
  * their finale answers so far instead of the normal round's answer history. During a tiebreak
  * re-vote, the two tiebreak candidates get a golden border via `tiebreakCandidate` (styled by CSS
  * depending on whether the viewing player may click them, see `listPlayersInGame`'s click handler).
@@ -227,7 +226,7 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
 
         const nameElement = document.createElement("span");
         nameElement.classList.add("playerName");
-        nameElement.textContent = player.isHost ? `👑 ${player.name}` : player.name;
+        nameElement.textContent = player.name;
 
         const isFinalist = isFinalePhase && finaleIdPlayers.includes(player.idPlayer);
         const isTiebreakCandidate = isTiebreakActive && tiebreakIdPlayers.includes(player.idPlayer);
@@ -283,8 +282,10 @@ function renderDeadPlayers(deadPlayers) {
 
 /**
  * Renders the in-game player list from the latest known state, splitting players into the alive
- * player list and the dead-players box, and shows the "Spiel starten" button only to the host
- * while no game is running and at least `MINIMUM_PLAYERS_TO_START` players are in the room.
+ * player list and the dead-players box, and shows the "Spiel starten"/"Spiel neu starten" button
+ * only to the host while no game is running and at least `MINIMUM_PLAYERS_TO_START` players are in
+ * the room. Labeled "Spiel neu starten" once a finale result is being shown (i.e. a previous game
+ * just ended), "Spiel starten" otherwise, e.g. for the very first game in this room.
  * @param {string} idOwnPlayer - The persistent id of the player viewing this page.
  */
 function renderPlayerLists(idOwnPlayer) {
@@ -299,6 +300,8 @@ function renderPlayerLists(idOwnPlayer) {
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     renderStartingLivesSetting(ownPlayer?.isHost ?? false);
     renderQuestionsPerPlayerPerRoundSetting(ownPlayer?.isHost ?? false);
+
+    buttonStartGame.textContent = finaleResult.hidden ? "Spiel starten" : "Spiel neu starten";
 
     if (hasGameStarted) {
         buttonStartGame.hidden = true;
@@ -403,6 +406,31 @@ function stopTimerBar() {
     }
 
     activeTimer = null;
+    clearTimeout(autoSubmitAnswerTimeout);
+    autoSubmitAnswerTimeout = null;
+}
+
+/**
+ * Schedules an automatic submission of whatever is currently typed in the answer input once a
+ * question's timer runs out, so a player who ran out of time still gets their in-progress answer
+ * counted instead of an unconditional "no answer" placeholder. Based on the same server-authoritative
+ * start time as `restartTimerBar()`, so a client that only catches up late (e.g. a backgrounded tab)
+ * still fires at the correct real time rather than a full duration from now. Fires a little before
+ * the actual deadline so it reliably reaches the server before its own timeout takes over.
+ * @param {number} durationMs - The full duration of the question.
+ * @param {number} startedAt - The server timestamp (ms since epoch) when the question started.
+ * @param {() => void} submitAnswerFn - The submit function to call once time runs out (already
+ *   guards against an empty input or an already-submitted answer).
+ */
+function scheduleAutoSubmitAnswer(durationMs, startedAt, submitAnswerFn) {
+    const AUTO_SUBMIT_SAFETY_MARGIN_MS = 300;
+
+    clearTimeout(autoSubmitAnswerTimeout);
+
+    const elapsedMs = Date.now() - startedAt;
+    const remainingMs = Math.max(0, durationMs - elapsedMs - AUTO_SUBMIT_SAFETY_MARGIN_MS);
+
+    autoSubmitAnswerTimeout = setTimeout(submitAnswerFn, remainingMs);
 }
 
 /**
@@ -537,8 +565,6 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
 
         const isOwnTurn = idCurrentPlayer === idPlayer;
         answerInputRow.hidden = !isOwnTurn;
@@ -548,6 +574,7 @@ if (!playerName || !roomCode) {
         }
 
         restartTimerBar(turnDurationMs, turnStartedAt);
+        scheduleAutoSubmitAnswer(turnDurationMs, turnStartedAt, submitAnswer);
     }
 
     /**
@@ -603,8 +630,6 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
         restartTimerBar(votingDurationMs, votingStartedAt);
     }
 
@@ -727,6 +752,7 @@ if (!playerName || !roomCode) {
 
         setupFinaleInputs(players);
         restartTimerBar(finaleDurationMs, finaleStartedAt);
+        scheduleAutoSubmitAnswer(finaleDurationMs, finaleStartedAt, submitFinaleAnswerFromOwnInput);
     }
 
     /**
@@ -763,19 +789,23 @@ if (!playerName || !roomCode) {
      * Applies a "finaleResolved" event's data to the UI: shows only the winner (or a tie) — the
      * final score itself stays visible via each finalist's answered-question dots in the player
      * list — and freezes the timer bar, since the game now simply waits here instead of counting
-     * down to an automatic continuation. After the server-given delay has passed (accounting for
-     * time already elapsed, so a rejoining player is caught up correctly), the host gets a button
-     * to start a fresh game; other players see no button and just keep waiting. Used both for the
-     * live event and to catch a rejoining player up on an already-running finale result display.
-     * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: object, players: Array<object>, resultDurationMs: number, resultStartedAt: number}} data -
+     * down to an automatic continuation. Also brings the room settings and the "Spiel neu starten"
+     * button back into view (the server has already ended the game on its side too, see
+     * `finishFinale()` in `server.js`), so the host can adjust settings before restarting. Used both
+     * for the live event and to catch a rejoining player up on an already-running finale result
+     * display.
+     * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: object, players: Array<object>}} data -
      *   The finale-result data.
      */
-    function applyFinaleResolved({idWinner, correctCounts, answersByPlayer, players, resultDurationMs, resultStartedAt}) {
+    function applyFinaleResolved({idWinner, correctCounts, answersByPlayer, players}) {
         isFinalePhase = true;
         finaleIdPlayers = Object.keys(correctCounts);
         finaleAnswersByPlayer = answersByPlayer;
         currentPlayers = players;
-        renderPlayerLists(idPlayer);
+        hasGameStarted = false;
+
+        elementRoomScreen.hidden = false;
+        elementGameScreen.hidden = false;
 
         textQuestion.textContent = "Finale Ergebnis";
         textFinaleProgress.hidden = true;
@@ -788,21 +818,13 @@ if (!playerName || !roomCode) {
 
         finaleResult.hidden = false;
 
+        renderPlayerLists(idPlayer);
+
         activeTimer = null;
+        clearTimeout(autoSubmitAnswerTimeout);
+        autoSubmitAnswerTimeout = null;
         timerBarFill.style.transition = "none";
         timerBarFill.style.width = "0%";
-
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
-
-        const isOwnHost = players.find((player) => player.idPlayer === idPlayer)?.isHost ?? false;
-
-        if (isOwnHost) {
-            const remainingMs = Math.max(0, resultDurationMs - (Date.now() - resultStartedAt));
-            finaleRestartRevealTimeout = setTimeout(() => {
-                buttonRestartGame.hidden = false;
-            }, remainingMs);
-        }
     }
 
     /**
@@ -873,12 +895,11 @@ if (!playerName || !roomCode) {
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
         tiebreakReveal.hidden = true;
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
 
         tiebreakAnswerRow.hidden = false;
         setupTiebreakInputs(players);
         restartTimerBar(tiebreakDurationMs, tiebreakStartedAt);
+        scheduleAutoSubmitAnswer(tiebreakDurationMs, tiebreakStartedAt, submitTiebreakAnswerFromOwnInput);
     }
 
     /**
@@ -958,8 +979,6 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
 
         restartTimerBar(tiebreakVotingDurationMs, tiebreakVotingStartedAt);
     }
@@ -1068,10 +1087,10 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
-        clearTimeout(finaleRestartRevealTimeout);
-        buttonRestartGame.hidden = true;
 
         activeTimer = null;
+        clearTimeout(autoSubmitAnswerTimeout);
+        autoSubmitAnswerTimeout = null;
         timerBarFill.style.transition = "none";
         timerBarFill.style.width = "100%";
     });
@@ -1086,10 +1105,6 @@ if (!playerName || !roomCode) {
     });
 
     buttonStartGame.addEventListener("click", () => {
-        socket.emit("startGame", {roomCode});
-    });
-
-    buttonRestartGame.addEventListener("click", () => {
         socket.emit("startGame", {roomCode});
     });
 

@@ -48,7 +48,6 @@ const VOTING_DURATION_MS = 30000;
 const VOTING_RESULT_DURATION_MS = 15000;
 const TIEBREAK_VOTING_DURATION_MS = 10000;
 const FINALE_DURATION_MS = 30000;
-const FINALE_RESULT_DURATION_MS = 5000;
 const turnTimeouts = new Map();
 const gameDisplayStates = new Map();
 
@@ -432,9 +431,10 @@ function handleFinaleAdvanceResult(roomCode, result) {
 /**
  * Broadcasts the finale outcome (winner, or a tie). Revives every player back to full lives first,
  * so nobody eliminated during the normal rounds still shows up as dead on the result screen or in a
- * subsequently restarted game. The game then simply waits on this screen — after a short delay the
- * host gets a button to start a fresh game (`startGame`), the same event used to start the very
- * first game; there is no automatic timeout back to the waiting room.
+ * subsequently restarted game, then ends the game on the server side (`stopGame()`) so the room
+ * settings become editable again and the room's regular "Spiel neu starten" button (the same
+ * `startGame` event used to start the very first game) can start a fresh game right away — there is
+ * no automatic timeout back to the waiting room.
  * @param {string} roomCode - The code of the room.
  * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}} result -
  *   The finale outcome returned by `advanceFinaleQuestion()`.
@@ -450,10 +450,9 @@ function finishFinale(roomCode, result) {
         correctCounts: result.correctCounts,
         answersByPlayer: result.answersByPlayer,
         players: getPublicPlayers(roomCode),
-        resultDurationMs: FINALE_RESULT_DURATION_MS,
-        resultStartedAt: Date.now(),
     };
 
+    stopGame(roomCode);
     setGameDisplayState(roomCode, "finaleResolved", payload);
     socketServer.to(roomCode).emit("finaleResolved", payload);
 }

@@ -308,21 +308,12 @@ button:hover {
 
 #finaleResult:not([hidden]) {
     margin-top: 18px;
+    margin-bottom: 50px;
     font-size: 18px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
-}
-
-#buttonRestartGame {
-    width: 200px;
-    margin-top: 12px;
-    background-color: #2e9e44;
-}
-
-#buttonRestartGame:hover {
-    background-color: #237a34;
 }
 
 #listVotes {
