@@ -444,9 +444,12 @@ function startGame(roomCode) {
 }
 
 /**
- * Starts the next round after a voting result has been shown: reshuffles the turn order over the
- * room's current players and resets each player's answered-question count, answer history, and
- * votes, without touching lives or the ongoing shuffled question pool.
+ * Starts the next round after a voting result has been shown: rotates the turn order among the
+ * room's currently living players (the player who went first now goes last, everyone else moves
+ * up by one) and resets each player's answered-question count, answer history, and votes, without
+ * touching lives or the ongoing shuffled question pool. Dead players and players who joined
+ * mid-game (and were therefore not part of the previous turn order) are appended after the
+ * rotated living players; their relative order does not matter since they take no turns.
  * @param {string} roomCode - The code of the room.
  * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|null} The
  *   first turn of the new round, or null if the room has no active game or no player is left.
@@ -458,7 +461,18 @@ function startNextRound(roomCode) {
         return null;
     }
 
-    room.game.playerOrder = shuffleArray(room.players.map((player) => player.idPlayer));
+    const idAlivePlayersInOrder = room.game.playerOrder.filter((idPlayer) =>
+        room.players.some((player) => player.idPlayer === idPlayer && isPlayerAlive(player)),
+    );
+    const idRemainingPlayers = room.players
+        .map((player) => player.idPlayer)
+        .filter((idPlayer) => !idAlivePlayersInOrder.includes(idPlayer));
+
+    const [idFirstPlayer, ...idOtherAlivePlayers] = idAlivePlayersInOrder;
+    room.game.playerOrder = idFirstPlayer
+        ? [...idOtherAlivePlayers, idFirstPlayer, ...idRemainingPlayers]
+        : idRemainingPlayers;
+
     room.game.indexCurrentPlayer = 0;
     room.game.answeredCounts = {};
     room.game.answersGiven = {};

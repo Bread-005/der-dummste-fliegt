@@ -386,18 +386,23 @@ function restartTimerBar(durationMs, startedAt) {
 }
 
 /**
- * Freezes the timer bar at its current visual width, stopping the countdown while the answer
- * reveal is shown. Reads the live, browser-interpolated width before cancelling the transition,
- * so the bar does not jump before it stops. Clears the remembered timer so a tab becoming visible
- * again during the reveal does not wrongly resume a countdown.
+ * Freezes the timer bar at its correct current width, stopping the countdown while the answer
+ * reveal is shown. Derives the width from the remembered server-authoritative start time instead
+ * of the live, browser-interpolated CSS width: a backgrounded tab pauses the running transition,
+ * so `getComputedStyle` would otherwise return the stale width from before the tab was hidden.
+ * Clears the remembered timer so a tab becoming visible again during the reveal does not wrongly
+ * resume a countdown.
  */
 function stopTimerBar() {
+    if (activeTimer) {
+        const elapsedMs = Date.now() - activeTimer.startedAt;
+        const remainingRatio = Math.max(0, activeTimer.durationMs - elapsedMs) / activeTimer.durationMs;
+
+        timerBarFill.style.transition = "none";
+        timerBarFill.style.width = `${remainingRatio * 100}%`;
+    }
+
     activeTimer = null;
-
-    const currentWidth = getComputedStyle(timerBarFill).width;
-
-    timerBarFill.style.transition = "none";
-    timerBarFill.style.width = currentWidth;
 }
 
 /**
