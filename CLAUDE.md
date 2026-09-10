@@ -179,10 +179,9 @@
   `allowedHeaders`. Es gibt keinen Deploy-Workflow mehr: GitHub Pages ist direkt auf
   "Deploy from branch: master / root" konfiguriert und liefert `index.html`, `room.html` und
   `frontend/` (als Geschwisterordner referenziert) unverändert aus dem Repo-Root nach
-  `https://bread-005.github.io/der-dummste-fliegt/` aus. Lokal lässt sich dasselbe Frontend über
-  `docker compose up -d frontend` (nginx, mountet `index.html`, `room.html`, `frontend/` nach
-  `/usr/share/nginx/html`) unter `http://localhost:8080` testen, ohne
-  Server-Dateien wie `package.json` oder `server/` mit auszuliefern.
+  `https://bread-005.github.io/der-dummste-fliegt/` aus. Es gibt kein lokales Docker-Compose-Setup
+  mehr; zum lokalen Testen des Frontends eignet sich stattdessen ein beliebiger statischer
+  Webserver über `index.html`, `room.html` und `frontend/`.
 - Da ein Seitenwechsel den Socket trennt, hat jeder Spieler eine stabile `idPlayer`
   (`crypto.randomUUID()`, persistiert in `sessionStorage`, siehe `frontend/js/playerIdentity.js`).
   Beim Wechsel Lobby → Raum verbindet sich ein neuer Socket und tritt mit derselben `idPlayer`
@@ -194,13 +193,13 @@
 - Raumcodes sind vierstellig, uppercase, kollisionsfrei innerhalb der laufenden `Map`.
 - Neue Spiellogik sollte als eigenes Modul neben `roomManager.js` entstehen, nicht direkt in
   `server.js`.
-- Fragen kommen **nicht** aus einer eigenen MongoDB-Anbindung in diesem Projekt, sondern von
-  einer externen API eines anderen Hobby-Projekts:
-  `https://hobby-projects-api.onrender.com/questions` (Format: `{_id, text, answer, createdAt}`).
-  `server/questionRepository.js` lädt sie einmalig beim Serverstart und cacht sie im Speicher
-  (`getAllQuestions()`). Neue Fragen aus der externen DB werden erst nach einem Neustart dieses
-  Servers sichtbar. Da der externe Service auf Render Hobby-Tier läuft, kann der erste Request
-  nach Inaktivität durch einen Kaltstart verzögert sein.
+- Fragen kommen über eine direkte MongoDB-Anbindung (`server/questionRepository.js`, Treiber
+  `mongodb`, Verbindungsdaten ausschließlich über Umgebungsvariablen, keine Klartext-Credentials
+  im Code). `loadQuestions()` lädt beim Serverstart einmalig alle Dokumente der Fragen-Collection
+  und cacht sie im Speicher (`getAllQuestions()`); es gibt aktuell keinen Retry-Mechanismus mehr —
+  schlägt der Verbindungsaufbau beim Start fehl, bleibt der Fragenpool für die Lebensdauer des
+  Prozesses leer. Neue Fragen in der Datenbank werden erst nach einem Neustart dieses Servers
+  sichtbar.
 - Runden-Engine lebt direkt in `server/roomManager.js` (Raum-Objekt bekommt ein `game`-Feld mit
   gemischtem Fragenpool, per `shuffleArray()` zufällig gewürfelter Zugreihenfolge, aktuellem
   Index, `answeredCounts` je `idPlayer` und einer `phase` ("question" oder "voting")). Die
@@ -386,6 +385,13 @@
   Fragenzähler-Fortschritt gutgeschrieben bekommt. `stopGameIfActive()` bleibt nur als
   Notfall-Rückfallebene übrig, falls `resyncQuestionTurn()` niemanden mehr findet, der am Zug sein
   könnte (z. B. wenn niemand mehr im Raum lebt oder verbleibt).
+- Sowohl `frontend/js/main.js` als auch `frontend/js/room.js` blenden bei einem Socket-`disconnect`
+  wieder den `connectingScreen` ein (z. B. bei einem Render-Neustart des Backends, der alle
+  verbundenen Clients trennt), damit sichtbar ist, dass keine Verbindung mehr besteht, statt dass
+  die Seite scheinbar unverändert eingefroren bleibt. In `room.js` wird das `joinRoom`-Event dafür
+  im `connect`-Handler ausgelöst statt nur einmalig direkt nach dem initialen Verbindungsaufbau,
+  damit ein automatischer Reconnect (z. B. nach diesem Server-Neustart) den Raum-Beitritt
+  eigenständig wiederholt, ohne dass die Seite neu geladen werden muss.
 - Verlässt der Host den Raum (expliziter "Verlassen"-Klick oder Disconnect-Timeout nach
   `DISCONNECT_GRACE_PERIOD_MS`), erhält automatisch ein verbleibender Spieler die Krone:
   `removePlayerFromRoom()` in `roomManager.js` setzt `room.idHost = room.players[0].idPlayer`,
@@ -423,7 +429,7 @@
   `docker buildx build --platform linux/amd64 -t bread005/der-dummste-fliegt:latest --push .`
   gebaute und zu Docker Hub gepushte Image — Änderungen an `server/` werden auf Render erst nach
   diesem Build+Push-Schritt und einem manuellen Redeploy in Render sichtbar, ein reiner
-  `git push` nach GitHub bewirkt nichts. Achtung, inkonsistent: Die aktuelle CORS-Origin-Liste in
-  `server.js` erlaubt `http://localhost:63342` (PhpStorms eingebauter Vorschau-Server), nicht aber
-  `http://localhost:8080` (der nginx-`frontend`-Service aus `docker-compose.yml`) — solange das
-  nicht angeglichen ist, schlägt eines der beiden lokalen Test-Setups mit einem CORS-Fehler fehl.
+  `git push` nach GitHub bewirkt nichts. Die aktuelle CORS-Origin-Liste in `server.js` erlaubt
+  ausschließlich `http://localhost:63342` (PhpStorms eingebauter Vorschau-Server) und
+  `https://bread-005.github.io` — ein anderer lokaler Port scheitert dadurch mit einem
+  CORS-Fehler gegen den Render-Server.
