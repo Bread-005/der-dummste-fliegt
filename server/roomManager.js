@@ -40,14 +40,21 @@ function isPlayerAlive(player) {
     return player.lives > 0;
 }
 
+const LEADING_GERMAN_ARTICLE_PATTERN =
+    /^(der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines)\s+/i;
+
 /**
- * Normalizes an answer for comparison: trims surrounding whitespace and ignores letter case, so
- * e.g. " Berlin " and "berlin" are treated as the same answer.
+ * Normalizes an answer for comparison: trims surrounding whitespace, ignores letter case, treats
+ * hyphens as spaces, drops periods, and strips a leading German article (e.g. "der", "die",
+ * "das", "eine"), so e.g. " Berlin ", "berlin", "die Berlin", "Otto-von-Bismarck" and
+ * "Otto von Bismarck" are all treated as the same answer.
  * @param {string} text - The text to normalize.
  * @returns {string} The normalized text.
  */
 function normalizeAnswerText(text) {
-    return text.trim().toLowerCase();
+    const normalizedPunctuation = text.replace(/-/g, " ").replace(/\./g, "");
+    const normalizedWhitespace = normalizedPunctuation.trim().toLowerCase().replace(/\s+/g, " ");
+    return normalizedWhitespace.replace(LEADING_GERMAN_ARTICLE_PATTERN, "");
 }
 
 /**
