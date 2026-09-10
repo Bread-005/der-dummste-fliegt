@@ -16,7 +16,7 @@ async function loadQuestions() {
 
 /**
  * Returns a copy of all cached questions.
- * @returns {Array<{_id: object, text: string, answer: string, createdAt: string}>} All cached questions.
+ * @returns {Array<{_id: object, text: string, answers: string[], createdAt: string}>} All cached questions.
  */
 function getAllQuestions() {
     return [...questions];

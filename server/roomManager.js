@@ -51,6 +51,29 @@ function normalizeAnswerText(text) {
 }
 
 /**
+ * Checks whether a given answer matches any of a question's accepted answers (e.g. "Goethe" and
+ * "Johann Wolfgang von Goethe" both accepted for the same question), ignoring case and surrounding
+ * whitespace.
+ * @param {string} answerGiven - The answer text a player submitted.
+ * @param {{answers: string[]}} question - The question, with its accepted answers.
+ * @returns {boolean} True if the given answer matches any accepted answer.
+ */
+function isAnswerAccepted(answerGiven, question) {
+    const normalizedAnswerGiven = normalizeAnswerText(answerGiven);
+    return question.answers.some((acceptedAnswer) => normalizeAnswerText(acceptedAnswer) === normalizedAnswerGiven);
+}
+
+/**
+ * Reads the display-friendly correct answer of a question: the first of its accepted answers,
+ * treated as the canonical one shown to clients.
+ * @param {{answers: string[]}} question - The question, with its accepted answers.
+ * @returns {string} The canonical correct answer text.
+ */
+function getCorrectAnswerDisplay(question) {
+    return question.answers[0];
+}
+
+/**
  * Checks whether a player has answered every question of the running round correctly. Such
  * players are protected from being voted for.
  * @param {object} room - The internal room record.
@@ -621,8 +644,9 @@ function recordCurrentAnswer(roomCode, answerText) {
     }
 
     const player = room.players.find((candidate) => candidate.idPlayer === turn.idCurrentPlayer);
-    const correctAnswer = room.game.shuffledQuestions[room.game.indexQuestion].answer;
-    const isCorrect = normalizeAnswerText(answerText) === normalizeAnswerText(correctAnswer);
+    const question = room.game.shuffledQuestions[room.game.indexQuestion];
+    const correctAnswer = getCorrectAnswerDisplay(question);
+    const isCorrect = isAnswerAccepted(answerText, question);
 
     if (!room.game.answersGiven[turn.idCurrentPlayer]) {
         room.game.answersGiven[turn.idCurrentPlayer] = [];
@@ -884,14 +908,16 @@ function resolveTiebreakQuestion(roomCode) {
     const tiebreak = room.game.tiebreak;
     const question = tiebreak.question;
 
+    const correctAnswer = getCorrectAnswerDisplay(question);
+
     const answers = tiebreak.idPlayers.map((idPlayer) => {
         const answerText = tiebreak.answers[idPlayer] ?? "(keine Antwort)";
-        const isCorrect = normalizeAnswerText(answerText) === normalizeAnswerText(question.answer);
+        const isCorrect = isAnswerAccepted(answerText, question);
         const player = room.players.find((candidate) => candidate.idPlayer === idPlayer);
 
         tiebreak.wasCorrect[idPlayer] = isCorrect;
         tiebreak.answersByPlayer[idPlayer] = [
-            {questionText: question.text, answerGiven: answerText, correctAnswer: question.answer, isCorrect},
+            {questionText: question.text, answerGiven: answerText, correctAnswer, isCorrect},
         ];
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
@@ -906,7 +932,7 @@ function resolveTiebreakQuestion(roomCode) {
 
     return {
         questionText: question.text,
-        correctAnswer: question.answer,
+        correctAnswer,
         answers,
         idPlayers: tiebreak.idPlayers,
         answersByPlayer: tiebreak.answersByPlayer,
@@ -1197,10 +1223,11 @@ function resolveFinaleQuestion(roomCode) {
 
     const finale = room.game.finale;
     const question = finale.questions[finale.indexQuestion];
+    const correctAnswer = getCorrectAnswerDisplay(question);
 
     const answers = finale.idPlayers.map((idPlayer) => {
         const answerText = finale.answers[idPlayer] ?? "(keine Antwort)";
-        const isCorrect = normalizeAnswerText(answerText) === normalizeAnswerText(question.answer);
+        const isCorrect = isAnswerAccepted(answerText, question);
 
         if (isCorrect) {
             finale.correctCounts[idPlayer] += 1;
@@ -1213,7 +1240,7 @@ function resolveFinaleQuestion(roomCode) {
         finale.answersGiven[idPlayer].push({
             questionText: question.text,
             answerGiven: answerText,
-            correctAnswer: question.answer,
+            correctAnswer,
             isCorrect,
         });
 
@@ -1224,7 +1251,7 @@ function resolveFinaleQuestion(roomCode) {
 
     return {
         questionText: question.text,
-        correctAnswer: question.answer,
+        correctAnswer,
         answers,
         correctCounts: {...finale.correctCounts},
         answersByPlayer: finale.answersGiven,
