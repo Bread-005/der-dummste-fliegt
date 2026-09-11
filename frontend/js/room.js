@@ -606,6 +606,9 @@ if (!playerName || !roomCode) {
      *   The reveal data.
      */
     function applyAnswerRevealed({playerName: answeringPlayerName, answerText, correctAnswer, answersByPlayer}) {
+        hasGameStarted = true;
+        elementRoomScreen.hidden = true;
+        elementGameScreen.hidden = false;
         answerInputRow.hidden = true;
         textPlayerAnswer.textContent = `${answeringPlayerName}'s Antwort: ${answerText}`;
         textCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
@@ -625,6 +628,9 @@ if (!playerName || !roomCode) {
      */
     function applyVotingStarted({players, answersByPlayer, votingDurationMs, votingStartedAt}) {
         currentPlayers = players;
+        hasGameStarted = true;
+        elementRoomScreen.hidden = true;
+        elementGameScreen.hidden = false;
         idCurrentTurnPlayer = null;
         isVotingPhase = true;
         hasVotedThisRound = false;
@@ -663,6 +669,9 @@ if (!playerName || !roomCode) {
      */
     function applyVotingResolved({votes, idPlayersLosingLife, players, resultDurationMs, resultStartedAt}) {
         currentPlayers = players;
+        hasGameStarted = true;
+        elementRoomScreen.hidden = true;
+        elementGameScreen.hidden = false;
         isVotingPhase = false;
         listPlayersInGame.classList.remove("votingActive", "voted");
         resetTiebreakUi();
@@ -785,6 +794,9 @@ if (!playerName || !roomCode) {
      *   The finale reveal data.
      */
     function applyFinaleAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
+        hasGameStarted = true;
+        elementRoomScreen.hidden = true;
+        elementGameScreen.hidden = false;
         isFinalePhase = true;
         finaleIdPlayers = answers.map((answer) => answer.idPlayer);
         finaleAnswerRow.hidden = true;
@@ -891,6 +903,7 @@ if (!playerName || !roomCode) {
      */
     function applyTiebreakStarted({question, idPlayers, tiebreakDurationMs, tiebreakStartedAt, players}) {
         currentPlayers = players;
+        hasGameStarted = true;
         idCurrentTurnPlayer = null;
         isVotingPhase = false;
         hasVotedThisRound = false;
@@ -934,6 +947,9 @@ if (!playerName || !roomCode) {
      *   The tiebreak reveal data.
      */
     function applyTiebreakAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
+        hasGameStarted = true;
+        elementRoomScreen.hidden = true;
+        elementGameScreen.hidden = false;
         isTiebreakActive = true;
         tiebreakIdPlayers = answers.map((answer) => answer.idPlayer);
         tiebreakAnswerRow.hidden = true;
@@ -966,6 +982,7 @@ if (!playerName || !roomCode) {
      */
     function applyTiebreakVotingStarted({idPlayers, players, answersByPlayer, tiebreakVotingDurationMs, tiebreakVotingStartedAt}) {
         currentPlayers = players;
+        hasGameStarted = true;
         idCurrentTurnPlayer = null;
         isTiebreakActive = true;
         tiebreakIdPlayers = idPlayers;
