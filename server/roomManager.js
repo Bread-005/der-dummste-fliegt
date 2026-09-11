@@ -704,33 +704,26 @@ function startGame(roomCode) {
         room.players.map((player) => [player.idPlayer, {idPlayer: player.idPlayer, name: player.name}]),
     );
 
-    if (room.players.length === 2) {
-        room.game = {
-            shuffledQuestions: [],
-            indexQuestion: 0,
-            playerOrder: room.players.map((player) => player.idPlayer),
-            indexCurrentPlayer: 0,
-            answeredCounts: {},
-            answersGiven: {},
-            votes: {},
-            phase: "question",
-        };
+    const isInstantFinale = room.players.length === 2;
+    const shuffledQuestions = isInstantFinale ? [] : shuffleArray(getAllQuestions());
 
-        persistPlayersSnapshot(room);
-
-        return startFinale(roomCode);
-    }
-
-    const shuffledQuestions = shuffleArray(getAllQuestions());
-
-    if (shuffledQuestions.length === 0) {
+    if (!isInstantFinale && shuffledQuestions.length === 0) {
         return null;
     }
 
     room.game = {
+        idGame,
+        startedAt: new Date(),
+        roundNumber: 1,
+        tiebreakRounds: [],
+        historyRounds: [],
+        playersHistory,
+        leftPlayers: [],
         shuffledQuestions,
         indexQuestion: 0,
-        playerOrder: shuffleArray(room.players.map((player) => player.idPlayer)),
+        playerOrder: isInstantFinale
+            ? room.players.map((player) => player.idPlayer)
+            : shuffleArray(room.players.map((player) => player.idPlayer)),
         indexCurrentPlayer: 0,
         answeredCounts: {},
         answersGiven: {},
@@ -740,7 +733,7 @@ function startGame(roomCode) {
 
     persistPlayersSnapshot(room);
 
-    return buildQuestionTurn(room);
+    return isInstantFinale ? startFinale(roomCode) : buildQuestionTurn(room);
 }
 
 /**
