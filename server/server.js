@@ -3,6 +3,7 @@ import {createServer} from "node:http";
 import {Server} from "socket.io";
 import {
     createRoom,
+    isNameTakenInRoom,
     joinRoom,
     leaveRoom,
     scheduleRemovalOnDisconnect,
@@ -612,6 +613,11 @@ socketServer.on("connection", (socket) => {
     });
 
     socket.on("joinRoom", ({playerName, roomCode, idPlayer}) => {
+        if (isNameTakenInRoom(roomCode, playerName, idPlayer)) {
+            socket.emit("errorMessage", {message: "Dieser Name wird in diesem Raum bereits verwendet."});
+            return;
+        }
+
         const joined = joinRoom(roomCode, idPlayer, socket.id, playerName);
 
         if (!joined) {

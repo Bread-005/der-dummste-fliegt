@@ -388,6 +388,29 @@ function createRoom(idPlayer, idSocket, playerName) {
 }
 
 /**
+ * Checks whether a given player name is already used by another player currently in a room,
+ * compared trimmed and case-insensitively so e.g. "Anna" and " anna " count as the same name. The
+ * requesting player's own id is excluded from the comparison, so a rejoining player is never
+ * blocked by the name they already hold.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} playerName - The name to check.
+ * @param {string} idPlayer - The persistent id of the player requesting the name.
+ * @returns {boolean} True if another player in the room already uses this name.
+ */
+function isNameTakenInRoom(roomCode, playerName, idPlayer) {
+    const room = rooms.get(roomCode);
+
+    if (!room) {
+        return false;
+    }
+
+    const normalizedName = playerName.trim().toLowerCase();
+    return room.players.some(
+        (player) => player.idPlayer !== idPlayer && player.name.trim().toLowerCase() === normalizedName,
+    );
+}
+
+/**
  * Adds a player to an existing room, or reconnects them if they already belong to it
  * (recognized by their persistent player id surviving a page navigation).
  * @param {string} roomCode - The code of the room to join.
@@ -1482,6 +1505,7 @@ function stopGame(roomCode) {
 
 export {
     createRoom,
+    isNameTakenInRoom,
     joinRoom,
     leaveRoom,
     scheduleRemovalOnDisconnect,
