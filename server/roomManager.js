@@ -1021,10 +1021,14 @@ function haveAllPlayersVoted(roomCode) {
 
 /**
  * Resolves the voting round: any alive player who has not voted yet (e.g. after the voting
- * timeout) automatically votes for themselves, then the vote is tallied. Dead players neither vote
- * nor can be voted for. Votes for a player who answered every question of the round correctly
- * (including such a player's own fallback self-vote) are excluded from the count, so that player
- * cannot lose a life this round. Depending on how many players are tied for the most votes:
+ * timeout) automatically votes for themselves, then the vote is tallied. This fallback is skipped
+ * for a player who answered every question of the round correctly: such a player is immune from
+ * being voted for in the first place (see `hasAnsweredAllCorrectlyThisRound()`), so a forced
+ * self-vote could never count anyway — it would just misrepresent them as having voted for
+ * themselves in the game history when they simply never voted at all. Dead players neither vote
+ * nor can be voted for. Votes for a player who answered every question of the round correctly are
+ * excluded from the count, so that player cannot lose a life this round. Depending on how many
+ * players are tied for the most votes:
  * - exactly one: that player loses one life (down to a minimum of zero);
  * - exactly two: neither loses a life yet — the caller must start a tiebreak between them instead
  *   (see `startTiebreakQuestion()`);
@@ -1045,7 +1049,7 @@ function resolveVotingPhase(roomCode) {
     const alivePlayers = room.players.filter(isPlayerAlive);
 
     alivePlayers.forEach((player) => {
-        if (!room.game.votes[player.idPlayer]) {
+        if (!room.game.votes[player.idPlayer] && !hasAnsweredAllCorrectlyThisRound(room, player.idPlayer)) {
             room.game.votes[player.idPlayer] = player.idPlayer;
         }
     });
@@ -1055,17 +1059,19 @@ function resolveVotingPhase(roomCode) {
     alivePlayers.forEach((player) => {
         const idVotedFor = room.game.votes[player.idPlayer];
 
-        if (hasAnsweredAllCorrectlyThisRound(room, idVotedFor)) {
+        if (!idVotedFor || hasAnsweredAllCorrectlyThisRound(room, idVotedFor)) {
             return;
         }
 
         voteCounts[idVotedFor] = (voteCounts[idVotedFor] ?? 0) + 1;
     });
 
-    const votes = alivePlayers.map((player) => ({
-        idVoter: player.idPlayer,
-        idVotedFor: room.game.votes[player.idPlayer],
-    }));
+    const votes = alivePlayers
+        .filter((player) => room.game.votes[player.idPlayer])
+        .map((player) => ({
+            idVoter: player.idPlayer,
+            idVotedFor: room.game.votes[player.idPlayer],
+        }));
 
     const highestVoteCount = Object.values(voteCounts).length > 0 ? Math.max(...Object.values(voteCounts)) : 0;
     const idPlayersAtTop = Object.keys(voteCounts).filter((idPlayer) => voteCounts[idPlayer] === highestVoteCount);
