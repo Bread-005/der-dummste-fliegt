@@ -58,26 +58,67 @@ function normalizeAnswerText(text) {
 }
 
 /**
+ * Parses a number from player-submitted or stored answer text, accepting both "." and "," as the
+ * decimal separator (German keyboards produce ",").
+ * @param {string} text - The text to parse as a number.
+ * @returns {number|null} The parsed number, or null if the text is not a valid number.
+ */
+function parseAnswerNumber(text) {
+    const normalizedText = text.trim().replace(",", ".");
+    if (normalizedText === "") return null;
+    const parsedNumber = Number(normalizedText);
+    return Number.isFinite(parsedNumber) ? parsedNumber : null;
+}
+
+/**
+ * Checks whether a given answer falls within a numeric question's accepted tolerance range around
+ * its correct value (e.g. correct answer "206" with tolerance 10 accepts 196-216).
+ * @param {string} answerGiven - The answer text a player submitted.
+ * @param {{answers: string[], tolerance: number}} question - The numeric question, with its
+ * correct value and accepted tolerance.
+ * @returns {boolean} True if the given answer parses as a number within the accepted range.
+ */
+function isNumericAnswerAccepted(answerGiven, question) {
+    const correctValue = parseAnswerNumber(question.answers[0]);
+    const givenValue = parseAnswerNumber(answerGiven);
+    if (correctValue === null || givenValue === null) return false;
+    return Math.abs(givenValue - correctValue) <= question.tolerance;
+}
+
+/**
  * Checks whether a given answer matches any of a question's accepted answers (e.g. "Goethe" and
  * "Johann Wolfgang von Goethe" both accepted for the same question), ignoring case and surrounding
- * whitespace.
+ * whitespace. Questions with `type === "numeric"` are instead checked as a numeric range around
+ * their correct value (see `isNumericAnswerAccepted()`).
  * @param {string} answerGiven - The answer text a player submitted.
- * @param {{answers: string[]}} question - The question, with its accepted answers.
+ * @param {{answers: string[], type?: string, tolerance?: number}} question - The question, with
+ * its accepted answers.
  * @returns {boolean} True if the given answer matches any accepted answer.
  */
 function isAnswerAccepted(answerGiven, question) {
+    if (question.type === "numeric") {
+        return isNumericAnswerAccepted(answerGiven, question);
+    }
+
     const normalizedAnswerGiven = normalizeAnswerText(answerGiven);
     return question.answers.some((acceptedAnswer) => normalizeAnswerText(acceptedAnswer) === normalizedAnswerGiven);
 }
 
 /**
  * Reads the display-friendly correct answer of a question: the first of its accepted answers,
- * treated as the canonical one shown to clients.
- * @param {{answers: string[]}} question - The question, with its accepted answers.
+ * treated as the canonical one shown to clients. For numeric questions, the accepted tolerance is
+ * appended in parentheses (e.g. "206 (+/- 10)").
+ * @param {{answers: string[], type?: string, tolerance?: number}} question - The question, with
+ * its accepted answers.
  * @returns {string} The canonical correct answer text.
  */
 function getCorrectAnswerDisplay(question) {
-    return question.answers[0];
+    const correctAnswer = question.answers[0];
+    if (question.type === "numeric") {
+        return `${correctAnswer} (+/- ${question.tolerance})`;
+    }
+
+    return correctAnswer;
 }
 
 /**
@@ -1376,16 +1417,6 @@ function updateQuestionsPerPlayerPerRound(roomCode, idSocket, questionsPerPlayer
 }
 
 /**
- * Finds the code of the room a socket currently belongs to, without modifying anything.
- * @param {string} idSocket - The socket id to search for.
- * @returns {string|null} The room code, or null if the socket belongs to no room.
- */
-function getRoomCodeForSocket(idSocket) {
-    const match = findByIdSocket(idSocket);
-    return match ? match.roomCode : null;
-}
-
-/**
  * Checks whether a room currently has an active game.
  * @param {string} roomCode - The code of the room.
  * @returns {boolean} True if a game is in progress.
@@ -1435,7 +1466,6 @@ export {
     submitTiebreakVote,
     haveAllTiebreakVotersVoted,
     resolveTiebreakVoting,
-    getRoomCodeForSocket,
     getPublicPlayers,
     isGameActive,
     stopGame,

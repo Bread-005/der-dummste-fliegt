@@ -16,7 +16,10 @@ async function loadQuestions() {
 
 /**
  * Returns a copy of all cached questions.
- * @returns {Array<{_id: object, text: string, answers: string[], createdAt: string}>} All cached questions.
+ * @returns {Array<{_id: object, text: string, answers: string[], createdAt: string, type?: string,
+ * tolerance?: number}>} All cached questions. Questions with `type === "numeric"` are checked as a
+ * numeric range: an answer counts as correct if it falls within `tolerance` of `answers[0]`
+ * (e.g. correct answer "206" with `tolerance: 10` accepts 196-216).
  */
 function getAllQuestions() {
     return [...questions];
