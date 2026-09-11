@@ -121,6 +121,48 @@ function getCorrectAnswerDisplay(question) {
     return correctAnswer;
 }
 
+const LYRICS_QUESTION_TEXT_PREFIX_PATTERN = /^finish the lyrics/i;
+
+/**
+ * Checks whether a question is a "finish the lyrics" question, recognized by its text starting
+ * with "Finish the lyrics" (case-insensitive), rather than a dedicated `type` field.
+ * @param {{text: string}} question - The question to check.
+ * @returns {boolean} True if the question is a lyrics question.
+ */
+function isLyricsQuestion(question) {
+    return LYRICS_QUESTION_TEXT_PREFIX_PATTERN.test(question.text);
+}
+
+/**
+ * Builds a blank mask for a lyrics question's missing words, one underscore per character of each
+ * word in the correct answer (e.g. "want you back" becomes "____ ___ ____"), so players see how
+ * many words and how long each one is without seeing the answer itself.
+ * @param {string} answer - The correct answer (the missing lyrics).
+ * @returns {string} The blank mask.
+ */
+function buildLyricsBlankMask(answer) {
+    return answer
+        .split(" ")
+        .map((word) => "_".repeat(word.length))
+        .join(" ");
+}
+
+/**
+ * Builds the question text to display to clients: the stored text unchanged, except for lyrics
+ * questions, which have the blank mask for their missing words appended (see
+ * `buildLyricsBlankMask()`), computed from the correct answer so it never has to be stored
+ * alongside the question itself.
+ * @param {{text: string, answers: string[]}} question - The question.
+ * @returns {string} The display text sent to clients.
+ */
+function getQuestionDisplayText(question) {
+    if (!isLyricsQuestion(question)) {
+        return question.text;
+    }
+
+    return `${question.text} ${buildLyricsBlankMask(question.answers[0])}`;
+}
+
 /**
  * Checks whether a player has answered every question of the running round correctly. Such
  * players are protected from being voted for.
@@ -221,8 +263,9 @@ function getCurrentTurn(room) {
         );
 
         if (candidateEligibleForTurn) {
+            const question = room.game.shuffledQuestions[room.game.indexQuestion];
             return {
-                question: {text: room.game.shuffledQuestions[room.game.indexQuestion].text},
+                question: {text: getQuestionDisplayText(question)},
                 idCurrentPlayer: idCandidate,
             };
         }
@@ -864,7 +907,7 @@ function resolveVotingPhase(roomCode) {
  */
 function buildTiebreakQuestionTurn(room) {
     return {
-        question: {text: room.game.tiebreak.question.text},
+        question: {text: getQuestionDisplayText(room.game.tiebreak.question)},
         idPlayers: room.game.tiebreak.idPlayers,
         players: toPublicPlayers(room),
     };
@@ -965,7 +1008,7 @@ function resolveTiebreakQuestion(roomCode) {
 
         tiebreak.wasCorrect[idPlayer] = isCorrect;
         tiebreak.answersByPlayer[idPlayer] = [
-            {questionText: question.text, answerGiven: answerText, correctAnswer, isCorrect},
+            {questionText: getQuestionDisplayText(question), answerGiven: answerText, correctAnswer, isCorrect},
         ];
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
@@ -979,7 +1022,7 @@ function resolveTiebreakQuestion(roomCode) {
     }
 
     return {
-        questionText: question.text,
+        questionText: getQuestionDisplayText(question),
         correctAnswer,
         answers,
         idPlayers: tiebreak.idPlayers,
@@ -1159,7 +1202,7 @@ function buildFinaleTurn(room) {
 
     return {
         phase: "finale",
-        question: {text: finale.questions[finale.indexQuestion].text},
+        question: {text: getQuestionDisplayText(finale.questions[finale.indexQuestion])},
         idPlayers: finale.idPlayers,
         questionIndex: finale.indexQuestion,
         totalQuestions: finale.questions.length,
@@ -1286,7 +1329,7 @@ function resolveFinaleQuestion(roomCode) {
         }
 
         finale.answersGiven[idPlayer].push({
-            questionText: question.text,
+            questionText: getQuestionDisplayText(question),
             answerGiven: answerText,
             correctAnswer,
             isCorrect,
@@ -1298,7 +1341,7 @@ function resolveFinaleQuestion(roomCode) {
     });
 
     return {
-        questionText: question.text,
+        questionText: getQuestionDisplayText(question),
         correctAnswer,
         answers,
         correctCounts: {...finale.correctCounts},

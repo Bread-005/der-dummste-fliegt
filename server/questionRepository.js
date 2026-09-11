@@ -19,7 +19,11 @@ async function loadQuestions() {
  * @returns {Array<{_id: object, text: string, answers: string[], createdAt: string, type?: string,
  * tolerance?: number}>} All cached questions. Questions with `type === "numeric"` are checked as a
  * numeric range: an answer counts as correct if it falls within `tolerance` of `answers[0]`
- * (e.g. correct answer "206" with `tolerance: 10` accepts 196-216).
+ * (e.g. correct answer "206" with `tolerance: 10` accepts 196-216). Questions whose `text` starts
+ * with "Finish the lyrics" (case-insensitive) are lyrics questions, recognized by that prefix
+ * rather than a dedicated `type` value: the client is shown a blank mask for the missing words
+ * (one underscore per character, computed from `answers[0]`), and the given answer is checked like
+ * any normal text question (see `isAnswerAccepted()`/`getQuestionDisplayText()` in `roomManager.js`).
  */
 function getAllQuestions() {
     return [...questions];
