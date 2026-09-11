@@ -539,8 +539,10 @@ function stopGameIfActive(roomCode) {
  * revealed, or while a voting result is already being displayed, is left alone — the
  * already-scheduled timeout for that phase moves things along on its own once it runs out. The
  * finale strictly requires exactly two contestants: if one of them is removed, the remaining
- * contestant is declared the winner (`finalizeAbandonedFinale()`) instead of just ending the game
- * without a result. A tiebreak strictly requires its two candidates; removing either of them
+ * contestant is declared the winner (`finishFinale()`) instead of just ending the game without a
+ * result. Removing anyone else while the finale is running (a dead player, or a spectator who
+ * joined mid-game) has no effect on it at all, since the finale only ever involves its two
+ * contestants. A tiebreak strictly requires its two candidates; removing either of them
  * abandons the tiebreak and resolves the round immediately with nobody losing a life for it (like a
  * fully tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has
  * now cast. If a removal during an still-unresolved question or voting round drops the room to

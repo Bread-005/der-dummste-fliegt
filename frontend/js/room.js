@@ -265,9 +265,30 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
 }
 
 /**
- * Renders the list of dead players (zero lives) as name-only rows, without hearts or answered-
- * question dots.
- * @param {Array<{idPlayer: string, name: string}>} deadPlayers - Players with zero lives.
+ * Builds a dead player's display label: just their name for a player who is simply out of lives
+ * but otherwise still normally in the game (`status: "active"`), with their status appended in
+ * parentheses otherwise (e.g. "Anna (Spectator)", "Anna (disconnected)").
+ * @param {{name: string, status: "active"|"spectator"|"disconnected"}} player - The dead player.
+ * @returns {string} The label to display.
+ */
+function buildDeadPlayerLabel(player) {
+    if (player.status === "spectator") {
+        return `${player.name} (Spectator)`;
+    }
+
+    if (player.status === "disconnected") {
+        return `${player.name} (disconnected)`;
+    }
+
+    return player.name;
+}
+
+/**
+ * Renders the list of dead players (zero lives, or left the game mid-game) as name-only rows
+ * (plus their status in parentheses where applicable, see `buildDeadPlayerLabel()`), without
+ * hearts or answered-question dots.
+ * @param {Array<{idPlayer: string, name: string, status: "active"|"spectator"|"disconnected"}>} deadPlayers -
+ *   Players with zero lives, or who left mid-game.
  */
 function renderDeadPlayers(deadPlayers) {
     listDeadPlayers.innerHTML = "";
@@ -275,7 +296,7 @@ function renderDeadPlayers(deadPlayers) {
 
     for (const player of deadPlayers) {
         const itemPlayer = document.createElement("li");
-        itemPlayer.textContent = player.name;
+        itemPlayer.textContent = buildDeadPlayerLabel(player);
         listDeadPlayers.appendChild(itemPlayer);
     }
 }
@@ -289,8 +310,8 @@ function renderDeadPlayers(deadPlayers) {
  * @param {string} idOwnPlayer - The persistent id of the player viewing this page.
  */
 function renderPlayerLists(idOwnPlayer) {
-    const alivePlayers = currentPlayers.filter((player) => player.lives > 0);
-    const deadPlayers = currentPlayers.filter((player) => player.lives <= 0);
+    const alivePlayers = currentPlayers.filter((player) => player.lives > 0 && player.status !== "disconnected");
+    const deadPlayers = currentPlayers.filter((player) => player.lives <= 0 || player.status === "disconnected");
 
     renderPlayers(listPlayersInGame, alivePlayers, idCurrentTurnPlayer);
     renderDeadPlayers(deadPlayers);

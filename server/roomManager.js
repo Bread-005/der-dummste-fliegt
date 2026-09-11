@@ -210,20 +210,40 @@ function orderPlayersForDisplay(room) {
 
 /**
  * Strips server-internal fields from a room's player list before sending it to clients, adding
- * each player's current lives and how many questions they have answered in the running round.
- * Ordered by the game's turn order while a game is running, otherwise by join order.
+ * each player's current lives, how many questions they have answered in the running round, and
+ * their `status` ("active" or "spectator", read directly off the player's own record). Ordered by
+ * the game's turn order while a game is running, otherwise by join order. While a game is active,
+ * players who left mid-game are appended at the end from `room.game.leftPlayers`, with their status
+ * as of the moment they left ("spectator" or "disconnected"), so clients can keep listing them
+ * among the dead players instead of silently dropping them once they leave.
  * @param {object} room - The internal room record.
- * @returns {Array<{idPlayer: string, name: string, isHost: boolean, lives: number, answeredCount: number}>}
+ * @returns {Array<{idPlayer: string, name: string, isHost: boolean, lives: number, answeredCount: number, status: "active"|"spectator"|"disconnected"}>}
  *   The public representation of the players.
  */
 function toPublicPlayers(room) {
-    return orderPlayersForDisplay(room).map((player) => ({
+    const connectedPlayers = orderPlayersForDisplay(room).map((player) => ({
         idPlayer: player.idPlayer,
         name: player.name,
         isHost: player.idPlayer === room.idHost,
         lives: player.lives,
         answeredCount: room.game ? (room.game.answeredCounts[player.idPlayer] ?? 0) : 0,
+        status: player.status,
     }));
+
+    if (!room.game) {
+        return connectedPlayers;
+    }
+
+    const leftPlayers = room.game.leftPlayers.map((leftPlayer) => ({
+        idPlayer: leftPlayer.idPlayer,
+        name: leftPlayer.name,
+        isHost: false,
+        lives: leftPlayer.lives,
+        answeredCount: 0,
+        status: leftPlayer.status,
+    }));
+
+    return [...connectedPlayers, ...leftPlayers];
 }
 
 /**
@@ -312,7 +332,10 @@ function findByIdSocket(idSocket) {
  * for it, exactly as a fully-tied vote would. If the removed player was one of the two finale
  * contestants, the finale can no longer be played out either, but unlike the tiebreak case it is
  * not simply abandoned: the remaining finalist is declared the winner (`finaleResult`), since the
- * finale strictly needs two contestants and only one is left standing.
+ * finale strictly needs two contestants and only one is left standing. If a game is running, also
+ * appends the removed player to `room.game.leftPlayers` (for the client's "dead players" display),
+ * with their status as of departure: a player who joined mid-game keeps `"spectator"`, everyone
+ * else is recorded as `"disconnected"`.
  * @param {string} roomCode - The code of the room.
  * @param {object} room - The internal room record.
  * @param {string} idPlayer - The persistent id of the player to remove.
@@ -323,6 +346,7 @@ function findByIdSocket(idSocket) {
  *   finale contestants, the finale outcome declaring the remaining contestant the winner.
  */
 function removePlayerFromRoom(roomCode, room, idPlayer) {
+    const removedPlayer = room.players.find((player) => player.idPlayer === idPlayer);
     const phaseAtRemoval = room.game?.phase ?? null;
     const wasCurrentQuestionTurn =
         phaseAtRemoval === "question" && getCurrentTurn(room)?.idCurrentPlayer === idPlayer;
@@ -339,6 +363,15 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
         : null;
 
     room.players = room.players.filter((player) => player.idPlayer !== idPlayer);
+
+    if (room.game && removedPlayer) {
+        room.game.leftPlayers.push({
+            idPlayer: removedPlayer.idPlayer,
+            name: removedPlayer.name,
+            lives: removedPlayer.lives,
+            status: removedPlayer.status === "spectator" ? "spectator" : "disconnected",
+        });
+    }
 
     if (room.players.length === 0) {
         rooms.delete(roomCode);
@@ -474,7 +507,16 @@ function buildVotingResultForHistory(room, votes, idPlayersLosingLife) {
 function createRoom(idPlayer, idSocket, playerName) {
     const roomCode = generateRoomCode();
     const room = {
-        players: [{idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: DEFAULT_STARTING_LIVES}],
+        players: [
+            {
+                idPlayer,
+                idSocket,
+                name: playerName,
+                disconnectTimeout: null,
+                lives: DEFAULT_STARTING_LIVES,
+                status: "active",
+            },
+        ],
         idHost: idPlayer,
         game: null,
         settings: {
@@ -651,6 +693,7 @@ function startGame(roomCode) {
 
     room.players.forEach((player) => {
         player.lives = room.settings.startingLives;
+        player.status = "active";
     });
 
     const idGame = randomUUID();
