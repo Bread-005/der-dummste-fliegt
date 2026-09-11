@@ -562,13 +562,12 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
         return;
     }
 
-    if (removalEffect.phaseAtRemoval === "finale") {
-        if (removalEffect.finaleResult) {
-            finishFinale(roomCode, removalEffect.finaleResult);
-        } else {
-            stopGameIfActive(roomCode);
-        }
+    if (removalEffect.finaleResult) {
+        finishFinale(roomCode, removalEffect.finaleResult);
+        return;
+    }
 
+    if (removalEffect.phaseAtRemoval === "finale") {
         return;
     }
 
@@ -672,6 +671,10 @@ socketServer.on("connection", (socket) => {
 
     socket.on("startGame", async ({roomCode}) => {
         if (!isRoomHost(roomCode, socket.id)) {
+            return;
+        }
+
+        if (isGameActive(roomCode)) {
             return;
         }
 
