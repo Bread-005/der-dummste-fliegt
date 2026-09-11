@@ -33,6 +33,8 @@ import {
     resolveTiebreakVoting,
     getPublicPlayers,
     isGameActive,
+    abortCurrentRoundToHistory,
+    finalizeGameRecord,
     stopGame,
     countAlivePlayers,
     startFinale,
@@ -444,6 +446,7 @@ function finishFinale(roomCode, result) {
     clearTimeout(turnTimeouts.get(roomCode));
     turnTimeouts.delete(roomCode);
 
+    finalizeGameRecord(roomCode);
     revivePlayersAfterFinale(roomCode);
 
     const payload = {
@@ -522,6 +525,7 @@ function stopGameIfActive(roomCode) {
     clearTimeout(turnTimeouts.get(roomCode));
     turnTimeouts.delete(roomCode);
     gameDisplayStates.delete(roomCode);
+    finalizeGameRecord(roomCode);
     stopGame(roomCode);
     socketServer.to(roomCode).emit("gameStopped");
 }
@@ -539,7 +543,14 @@ function stopGameIfActive(roomCode) {
  * without a result. A tiebreak strictly requires its two candidates; removing either of them
  * abandons the tiebreak and resolves the round immediately with nobody losing a life for it (like a
  * fully tied vote), same as a still-open tiebreak re-vote that every remaining outside voter has
- * now cast.
+ * now cast. If a removal during an still-unresolved question or voting round drops the room to
+ * exactly two alive players, the round is aborted straight into the finale (see
+ * `abortCurrentRoundToHistory()`) instead of letting it run its course. This explicitly excludes a
+ * voting round that has already been resolved and is only being displayed (`"votingResolved"`):
+ * `resolveVotingPhase()` already persisted that round's real outcome, and
+ * `finalizeVotingResolution()`'s own scheduled timeout already starts the finale once the display
+ * ends, so aborting here as well would both start the finale twice and duplicate that round in the
+ * game history.
  * @param {string} roomCode - The code of the room.
  * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}|undefined} removalEffect -
  *   The removal effect returned by `leaveRoom()`/`scheduleRemovalOnDisconnect()`.
@@ -566,6 +577,17 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
             idPlayersLosingLife: [],
             players: getPublicPlayers(roomCode),
         });
+        return;
+    }
+
+    const isMidNormalRound =
+        (removalEffect.phaseAtRemoval === "question" || removalEffect.phaseAtRemoval === "voting") &&
+        gameDisplayStates.get(roomCode)?.type !== "votingResolved";
+
+    if (isMidNormalRound && countAlivePlayers(roomCode) === 2) {
+        clearTimeout(turnTimeouts.get(roomCode));
+        abortCurrentRoundToHistory(roomCode);
+        handleFinaleAdvanceResult(roomCode, startFinale(roomCode));
         return;
     }
 

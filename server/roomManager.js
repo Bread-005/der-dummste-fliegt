@@ -1,4 +1,11 @@
+import {randomUUID} from "node:crypto";
 import {getAllQuestions} from "./questionRepository.js";
+import {
+    createGameHistoryDocument,
+    saveRoundsSnapshot,
+    savePlayersSnapshot,
+    finalizeGameHistory,
+} from "./gameRepository.js";
 
 const rooms = new Map();
 const DISCONNECT_GRACE_PERIOD_MS = 5000;
@@ -10,6 +17,7 @@ const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
 const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
 const MINIMUM_PLAYERS_TO_START = 2;
 const FINALE_QUESTION_COUNT = 5;
+const FINALE_ROUND_NUMBER = 1000;
 
 /**
  * Generates a random four-character uppercase room code that is not yet in use.
@@ -364,6 +372,99 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
 }
 
 /**
+ * Flattens a per-player answer history (as kept for the running round, a tiebreak, or the finale)
+ * into a flat list of answer entries, each tagged with the display name (see
+ * `getPlayerNameForHistory()`) of the player who gave it, for storage in the game history.
+ * @param {object} room - The internal room record.
+ * @param {Object<string, Array<{questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>>} answersGiven -
+ *   The answer history, keyed by player id.
+ * @returns {Array<{playerName: string, questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>}
+ *   The flattened answer entries.
+ */
+function flattenAnswersGiven(room, answersGiven) {
+    return Object.entries(answersGiven).flatMap(([idPlayer, answers]) =>
+        answers.map((answer) => ({playerName: getPlayerNameForHistory(room, idPlayer), ...answer})),
+    );
+}
+
+/**
+ * Persists a room's current round history (`room.game.historyRounds`), fire-and-forget. Called
+ * after every round (question, tiebreak, or finale question) finishes.
+ * @param {object} room - The internal room record.
+ */
+function persistRoundsSnapshot(room) {
+    saveRoundsSnapshot(room.game.idGame, room.game.historyRounds).catch(console.error);
+}
+
+/**
+ * Records the current, still-unresolved normal round as an aborted round in the game history: its
+ * answers so far, but no voting result, since none was reached. Used when a player leaving mid-round
+ * (question or voting phase) drops the room to exactly two alive players, which skips straight to
+ * the finale (see `handlePlayerRemovedDuringGame()` in `server.js`) instead of letting the round run
+ * its course.
+ * @param {string} roomCode - The code of the room.
+ */
+function abortCurrentRoundToHistory(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game) {
+        return;
+    }
+
+    room.game.historyRounds.push({
+        roundNumber: room.game.roundNumber,
+        type: "question",
+        answers: flattenAnswersGiven(room, room.game.answersGiven),
+        votingResult: null,
+    });
+
+    persistRoundsSnapshot(room);
+}
+
+/**
+ * Persists a room's current player roster (`room.game.playersHistory`), fire-and-forget. Called
+ * whenever the roster of players who took part in the game actually changes: the game started, or
+ * a new player joined mid-game (as a spectator).
+ * @param {object} room - The internal room record.
+ */
+function persistPlayersSnapshot(room) {
+    savePlayersSnapshot(room.game.idGame, Array.from(room.game.playersHistory.values())).catch(console.error);
+}
+
+/**
+ * Reads a player's display name for the game history, preferring the room's current player list
+ * (up to date for anyone still present) and falling back to `room.game.playersHistory` (needed for
+ * a player who already left the game by the time this is called).
+ * @param {object} room - The internal room record.
+ * @param {string} idPlayer - The persistent id of the player.
+ * @returns {string} The player's display name, or "Unbekannt" if neither source has it.
+ */
+function getPlayerNameForHistory(room, idPlayer) {
+    const currentPlayer = room.players.find((player) => player.idPlayer === idPlayer);
+    return currentPlayer?.name ?? room.game.playersHistory.get(idPlayer)?.name ?? "Unbekannt";
+}
+
+/**
+ * Builds a round's voting result for the game history, replacing every player id involved with
+ * their display name (see `getPlayerNameForHistory()`), so the stored history is readable without
+ * having to cross-reference the `players` list.
+ * @param {object} room - The internal room record.
+ * @param {Array<{idVoter: string, idVotedFor: string}>} votes - The votes cast this round.
+ * @param {string[]} idPlayersLosingLife - The ids of the players who lost a life this round.
+ * @returns {{votes: Array<{voter: string, votedFor: string}>, playersLosingLife: string[]}} The
+ *   voting result, ready to be stored in a round's `votingResult` field.
+ */
+function buildVotingResultForHistory(room, votes, idPlayersLosingLife) {
+    return {
+        votes: votes.map((vote) => ({
+            voter: getPlayerNameForHistory(room, vote.idVoter),
+            votedFor: getPlayerNameForHistory(room, vote.idVotedFor),
+        })),
+        playersLosingLife: idPlayersLosingLife.map((idPlayer) => getPlayerNameForHistory(room, idPlayer)),
+    };
+}
+
+/**
  * Creates a new room with a single player as its first member.
  * @param {string} idPlayer - The persistent id of the creating player.
  * @param {string} idSocket - The current socket id of the creating player.
@@ -436,8 +537,15 @@ function joinRoom(roomCode, idPlayer, idSocket, playerName) {
         existingPlayer.name = playerName;
     } else {
         const livesOnJoin = room.game ? 0 : room.settings.startingLives;
+        const status = room.game ? "spectator" : "active";
 
-        room.players.push({idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: livesOnJoin});
+        room.players.push({idPlayer, idSocket, name: playerName, disconnectTimeout: null, lives: livesOnJoin, status});
+
+        if (room.game) {
+            room.game.leftPlayers = room.game.leftPlayers.filter((leftPlayer) => leftPlayer.idPlayer !== idPlayer);
+            room.game.playersHistory.set(idPlayer, {idPlayer, name: playerName});
+            persistPlayersSnapshot(room);
+        }
     }
 
     return {players: toPublicPlayers(room), settings: {...room.settings}};
@@ -545,6 +653,14 @@ function startGame(roomCode) {
         player.lives = room.settings.startingLives;
     });
 
+    const idGame = randomUUID();
+
+    createGameHistoryDocument(idGame, roomCode, room.settings).catch(console.error);
+
+    const playersHistory = new Map(
+        room.players.map((player) => [player.idPlayer, {idPlayer: player.idPlayer, name: player.name}]),
+    );
+
     if (room.players.length === 2) {
         room.game = {
             shuffledQuestions: [],
@@ -556,6 +672,8 @@ function startGame(roomCode) {
             votes: {},
             phase: "question",
         };
+
+        persistPlayersSnapshot(room);
 
         return startFinale(roomCode);
     }
@@ -576,6 +694,8 @@ function startGame(roomCode) {
         votes: {},
         phase: "question",
     };
+
+    persistPlayersSnapshot(room);
 
     return buildQuestionTurn(room);
 }
@@ -615,6 +735,8 @@ function startNextRound(roomCode) {
     room.game.answersGiven = {};
     room.game.votes = {};
     room.game.phase = "question";
+    room.game.roundNumber += 1;
+    room.game.tiebreakRounds = [];
 
     return buildQuestionTurn(room);
 }
@@ -919,6 +1041,15 @@ function resolveVotingPhase(roomCode) {
         }
     });
 
+    room.game.historyRounds.push({
+        roundNumber: room.game.roundNumber,
+        type: "question",
+        answers: flattenAnswersGiven(room, room.game.answersGiven),
+        votingResult: buildVotingResultForHistory(room, votes, idPlayersLosingLife),
+    });
+
+    persistRoundsSnapshot(room);
+
     return {type: "resolved", votes, idPlayersLosingLife, players: toPublicPlayers(room)};
 }
 
@@ -1007,7 +1138,12 @@ function haveBothTiebreakPlayersAnswered(roomCode) {
  * checked by `submitTiebreakVote()`) — answering right is this question's only way for a candidate
  * to protect themselves, exactly like answering every question right protects a player from normal
  * voting. Advances the shared question pool exactly like a normal turn's answer would, reshuffling
- * once every question has been asked. Must be called before `startTiebreakVoting()`.
+ * once every question has been asked. Also appends this attempt's answers to
+ * `room.game.tiebreakRounds`, the running round's list of tiebreak attempts: the main round is
+ * always recorded as a single, normal history entry (see `resolveVotingPhase()`), with any tiebreak
+ * attempts it took to resolve nested under that entry's `tiebreaks` field instead of getting their
+ * own separate history entries (see `resolveTiebreakVoting()`). Must be called before
+ * `startTiebreakVoting()`.
  * @param {string} roomCode - The code of the room.
  * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[], answersByPlayer: Object<string, Array<object>>}|null}
  *   The reveal info, or null if the room has no active tiebreak question.
@@ -1036,6 +1172,8 @@ function resolveTiebreakQuestion(roomCode) {
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
     });
+
+    room.game.tiebreakRounds.push({answers: flattenAnswersGiven(room, tiebreak.answersByPlayer)});
 
     room.game.indexQuestion += 1;
 
@@ -1149,7 +1287,12 @@ function haveAllTiebreakVotersVoted(roomCode) {
  * left alive), the tiebreak is either abandoned with nobody losing a life (no outside voters at
  * all) or must repeat with another tiebreak question (`startTiebreakQuestion()` again with the same
  * two candidates). Restores `room.game.phase` back to `"voting"` once the tiebreak concludes, so
- * the room ends up in the same phase a normal, non-tied vote would have left it in.
+ * the room ends up in the same phase a normal, non-tied vote would have left it in. Once concluded,
+ * pushes a single history entry for the whole main round it belongs to (same `roundNumber`, `type:
+ * "question"`, and the main round's own `answers`, exactly as `resolveVotingPhase()` would for a
+ * round that never tied), with the tiebreak attempts it took to get here nested under a `tiebreaks`
+ * field (`room.game.tiebreakRounds`, accumulated by `resolveTiebreakQuestion()`) and `votingResult`
+ * carrying only the round's actual final outcome.
  * @param {string} roomCode - The code of the room.
  * @returns {{type: "stillTied", idPlayers: string[]}|{type: "resolved", votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}|null}
  *   Either a marker that another tiebreak question must be started, or the resolved outcome, or
@@ -1181,6 +1324,16 @@ function resolveTiebreakVoting(roomCode) {
     const secondCandidateVotes = voteCounts[idSecondCandidate] ?? 0;
 
     if (outsideVoters.length === 0) {
+        room.game.historyRounds.push({
+            roundNumber: room.game.roundNumber,
+            type: "question",
+            answers: flattenAnswersGiven(room.game.answersGiven),
+            tiebreaks: room.game.tiebreakRounds,
+            votingResult: buildVotingResultForHistory(room, [], []),
+        });
+
+        persistRoundsSnapshot(room);
+
         room.game.phase = "voting";
         delete room.game.tiebreak;
         return {type: "resolved", votes: [], idPlayersLosingLife: [], players: toPublicPlayers(room)};
@@ -1196,6 +1349,16 @@ function resolveTiebreakVoting(roomCode) {
     if (player) {
         player.lives = Math.max(0, player.lives - 1);
     }
+
+    room.game.historyRounds.push({
+        roundNumber: room.game.roundNumber,
+        type: "question",
+        answers: flattenAnswersGiven(room, room.game.answersGiven),
+        tiebreaks: room.game.tiebreakRounds,
+        votingResult: buildVotingResultForHistory(room, votes, [idPlayerLosingLife]),
+    });
+
+    persistRoundsSnapshot(room);
 
     room.game.phase = "voting";
     delete room.game.tiebreak;
@@ -1363,6 +1526,24 @@ function resolveFinaleQuestion(roomCode) {
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
     });
 
+    const finaleRoundEntry = {
+        roundNumber: FINALE_ROUND_NUMBER,
+        type: "finale",
+        answers: flattenAnswersGiven(room, finale.answersGiven),
+        votingResult: null,
+    };
+    const indexExistingFinaleRound = room.game.historyRounds.findIndex(
+        (round) => round.roundNumber === FINALE_ROUND_NUMBER && round.type === "finale",
+    );
+
+    if (indexExistingFinaleRound === -1) {
+        room.game.historyRounds.push(finaleRoundEntry);
+    } else {
+        room.game.historyRounds[indexExistingFinaleRound] = finaleRoundEntry;
+    }
+
+    persistRoundsSnapshot(room);
+
     return {
         questionText: getQuestionDisplayText(question),
         correctAnswer,
@@ -1492,6 +1673,21 @@ function isGameActive(roomCode) {
 }
 
 /**
+ * Records a finished game's end time into the game history. Must be called before `stopGame()`
+ * clears `room.game`, since it reads `room.game.idGame`.
+ * @param {string} roomCode - The code of the room.
+ */
+function finalizeGameRecord(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game) {
+        return;
+    }
+
+    finalizeGameHistory(room.game.idGame, new Date()).catch(console.error);
+}
+
+/**
  * Stops a room's active game (if any), e.g. because no player was left to take the current turn.
  * @param {string} roomCode - The code of the room.
  */
@@ -1535,6 +1731,8 @@ export {
     resolveTiebreakVoting,
     getPublicPlayers,
     isGameActive,
+    abortCurrentRoundToHistory,
+    finalizeGameRecord,
     stopGame,
     countAlivePlayers,
     startFinale,
