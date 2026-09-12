@@ -129,7 +129,7 @@ function getCorrectAnswerDisplay(question) {
     return correctAnswer;
 }
 
-const LYRICS_QUESTION_TEXT_PREFIX_PATTERN = /^finish the lyrics/i;
+const LYRICS_QUESTION_TEXT_PREFIX_PATTERN = "Finish the lyrics";
 
 /**
  * Checks whether a question is a "finish the lyrics" question, recognized by its text starting
@@ -138,7 +138,14 @@ const LYRICS_QUESTION_TEXT_PREFIX_PATTERN = /^finish the lyrics/i;
  * @returns {boolean} True if the question is a lyrics question.
  */
 function isLyricsQuestion(question) {
-    return LYRICS_QUESTION_TEXT_PREFIX_PATTERN.test(question.text);
+    return question.text.startsWith(LYRICS_QUESTION_TEXT_PREFIX_PATTERN);
+}
+
+// TEMPORARY TEST HELPER: finds the index of the first lyrics question in a shuffled pool, so
+// `indexQuestion` can be pointed straight at it for manually verifying the blank mask. Remove once
+// testing is done.
+function findFirstLyricsQuestionIndex(questions) {
+    return questions.findIndex((question) => isLyricsQuestion(question));
 }
 
 /**
@@ -706,6 +713,7 @@ function startGame(roomCode) {
 
     const isInstantFinale = room.players.length === 2;
     const shuffledQuestions = isInstantFinale ? [] : shuffleArray(getAllQuestions());
+    const indexFirstLyricsQuestion = isInstantFinale ? -1 : findFirstLyricsQuestionIndex(shuffledQuestions);
 
     if (!isInstantFinale && shuffledQuestions.length === 0) {
         return null;
@@ -720,7 +728,9 @@ function startGame(roomCode) {
         playersHistory,
         leftPlayers: [],
         shuffledQuestions,
-        indexQuestion: 0,
+        // TEMPORARY TEST TWEAK: start on the first lyrics question instead of index 0 to manually
+        // verify the blank mask. Remove once testing is done.
+        indexQuestion: indexFirstLyricsQuestion >= 0 ? indexFirstLyricsQuestion : 0,
         playerOrder: isInstantFinale
             ? room.players.map((player) => player.idPlayer)
             : shuffleArray(room.players.map((player) => player.idPlayer)),

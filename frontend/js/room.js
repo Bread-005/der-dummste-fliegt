@@ -43,6 +43,7 @@ const buttonStartGame = document.getElementById("buttonStartGame");
 const buttonLeaveRoom = document.getElementById("buttonLeaveRoom");
 const timerBarFill = document.getElementById("timerBarFill");
 const textQuestion = document.getElementById("textQuestion");
+const textLyricsMask = document.getElementById("textLyricsMask");
 const textVotingHint = document.getElementById("textVotingHint");
 const textTiebreakVotingHint = document.getElementById("textTiebreakVotingHint");
 const textFinaleProgress = document.getElementById("textFinaleProgress");
@@ -139,6 +140,50 @@ function readRoomCodeFromUrl() {
 function hasTiebreakCandidateAnsweredCorrectly(idPlayerToCheck) {
     const answerHistory = tiebreakAnswersByPlayer[idPlayerToCheck];
     return Boolean(answerHistory?.some((entry) => entry.isCorrect));
+}
+
+/**
+ * Splits a lyrics question's display text into the question itself and its trailing blank mask
+ * (a run of space-separated underscore-only tokens appended by the server, see
+ * `buildLyricsBlankMask()` in `roomManager.js`). Non-lyrics questions have no such trailing run, so
+ * the mask comes back empty.
+ * @param {string} text - The full display text received from the server.
+ * @returns {{questionText: string, maskText: string}} The question text without the mask, and the
+ *   mask on its own (empty if the question has none).
+ */
+function splitLyricsMask(text) {
+    const tokens = text.split(" ");
+    let maskTokenCount = 0;
+
+    for (let indexToken = tokens.length - 1; indexToken >= 0; indexToken -= 1) {
+        if (!/^_+$/.test(tokens[indexToken])) {
+            break;
+        }
+
+        maskTokenCount += 1;
+    }
+
+    if (maskTokenCount === 0) {
+        return {questionText: text, maskText: ""};
+    }
+
+    return {
+        questionText: tokens.slice(0, tokens.length - maskTokenCount).join(" "),
+        maskText: tokens.slice(tokens.length - maskTokenCount).join(" "),
+    };
+}
+
+/**
+ * Renders a question's display text into `textQuestion`, showing a lyrics question's blank mask
+ * (see `splitLyricsMask()`) in its own monospaced line below so each underscore run stays legible
+ * as a letter count instead of blending into the question text.
+ * @param {string} text - The full display text received from the server.
+ */
+function renderQuestionText(text) {
+    const {questionText, maskText} = splitLyricsMask(text);
+    textQuestion.textContent = questionText;
+    textLyricsMask.textContent = maskText;
+    textLyricsMask.hidden = maskText.length === 0;
 }
 
 /**
@@ -635,7 +680,7 @@ if (!playerName || !roomCode) {
         resetTiebreakUi();
         renderPlayerLists(idPlayer);
 
-        textQuestion.textContent = question.text;
+        renderQuestionText(question.text);
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
         inputAnswer.value = "";
@@ -709,6 +754,7 @@ if (!playerName || !roomCode) {
         elementGameScreen.hidden = false;
 
         textQuestion.textContent = "Voting";
+        textLyricsMask.hidden = true;
         textVotingHint.hidden = false;
         textFinaleProgress.hidden = true;
         answerInputRow.hidden = true;
@@ -740,6 +786,7 @@ if (!playerName || !roomCode) {
         renderPlayerLists(idPlayer);
 
         textQuestion.textContent = "Voting Results";
+        textLyricsMask.hidden = true;
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
         finaleAnswerRow.hidden = true;
@@ -830,7 +877,7 @@ if (!playerName || !roomCode) {
         elementRoomScreen.hidden = true;
         elementGameScreen.hidden = false;
 
-        textQuestion.textContent = question.text;
+        renderQuestionText(question.text);
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = false;
         textFinaleProgress.textContent = `Finale — Frage ${questionIndex + 1} von ${totalQuestions}`;
@@ -903,6 +950,7 @@ if (!playerName || !roomCode) {
         elementGameScreen.hidden = false;
 
         textQuestion.textContent = "Finale Ergebnis";
+        textLyricsMask.hidden = true;
         textFinaleProgress.hidden = true;
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
@@ -981,7 +1029,7 @@ if (!playerName || !roomCode) {
         elementRoomScreen.hidden = true;
         elementGameScreen.hidden = false;
 
-        textQuestion.textContent = `Stichfrage: ${question.text}`;
+        renderQuestionText(`Stichfrage: ${question.text}`);
         textVotingHint.hidden = true;
         textTiebreakVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
@@ -1067,6 +1115,7 @@ if (!playerName || !roomCode) {
         );
 
         textQuestion.textContent = "Stichfrage — Abstimmung";
+        textLyricsMask.hidden = true;
         textTiebreakVotingHint.textContent =
             `Wer war dümmer, ${nameLeft} oder ${nameRight}? ${nameLeft} und ${nameRight} stimmen dabei nicht mit ab.`;
         textTiebreakVotingHint.hidden = false;
@@ -1179,6 +1228,7 @@ if (!playerName || !roomCode) {
         answerInputRow.hidden = true;
         answerReveal.hidden = true;
         textQuestion.textContent = "";
+        textLyricsMask.hidden = true;
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
         textPlayerAnswer.textContent = "";

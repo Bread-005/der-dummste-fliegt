@@ -225,6 +225,13 @@ button:hover {
     font-size: 20px;
 }
 
+#textLyricsMask {
+    margin-bottom: 12px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 22px;
+    letter-spacing: 4px;
+}
+
 #textVotingHint {
     margin-bottom: 12px;
     font-size: 16px;
