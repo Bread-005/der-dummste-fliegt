@@ -94,17 +94,27 @@ function isNumericAnswerAccepted(answerGiven, question) {
 }
 
 /**
+ * Checks whether a question's correct answer is numeric and carries a usable tolerance, i.e.
+ * whether it should be graded as a numeric range instead of an exact text match.
+ * @param {{answers: string[], tolerance?: number}} question - The question, with its correct value.
+ * @returns {boolean} True if the question's correct answer is a number and its tolerance is set.
+ */
+function hasNumericToleranceCheck(question) {
+    return typeof question.tolerance === "number" && parseAnswerNumber(question.answers[0]) !== null;
+}
+
+/**
  * Checks whether a given answer matches any of a question's accepted answers (e.g. "Goethe" and
  * "Johann Wolfgang von Goethe" both accepted for the same question), ignoring case and surrounding
- * whitespace. Questions with `type === "numeric"` are instead checked as a numeric range around
- * their correct value (see `isNumericAnswerAccepted()`).
+ * whitespace. Questions whose correct answer is numeric and that carry a `tolerance` are instead
+ * checked as a numeric range around their correct value (see `isNumericAnswerAccepted()`).
  * @param {string} answerGiven - The answer text a player submitted.
- * @param {{answers: string[], type?: string, tolerance?: number}} question - The question, with
- * its accepted answers.
+ * @param {{answers: string[], tolerance?: number}} question - The question, with its accepted
+ * answers.
  * @returns {boolean} True if the given answer matches any accepted answer.
  */
 function isAnswerAccepted(answerGiven, question) {
-    if (question.type === "numeric") {
+    if (hasNumericToleranceCheck(question)) {
         return isNumericAnswerAccepted(answerGiven, question);
     }
 
@@ -114,15 +124,15 @@ function isAnswerAccepted(answerGiven, question) {
 
 /**
  * Reads the display-friendly correct answer of a question: the first of its accepted answers,
- * treated as the canonical one shown to clients. For numeric questions, the accepted tolerance is
- * appended in parentheses (e.g. "206 (+/- 10)").
- * @param {{answers: string[], type?: string, tolerance?: number}} question - The question, with
- * its accepted answers.
+ * treated as the canonical one shown to clients. For questions graded with a numeric tolerance,
+ * the accepted tolerance is appended in parentheses (e.g. "206 (+/- 10)").
+ * @param {{answers: string[], tolerance?: number}} question - The question, with its accepted
+ * answers.
  * @returns {string} The canonical correct answer text.
  */
 function getCorrectAnswerDisplay(question) {
     const correctAnswer = question.answers[0];
-    if (question.type === "numeric") {
+    if (hasNumericToleranceCheck(question)) {
         return `${correctAnswer} (+/- ${question.tolerance})`;
     }
 
