@@ -141,13 +141,6 @@ function isLyricsQuestion(question) {
     return question.text.startsWith(LYRICS_QUESTION_TEXT_PREFIX_PATTERN);
 }
 
-// TEMPORARY TEST HELPER: finds the index of the first lyrics question in a shuffled pool, so
-// `indexQuestion` can be pointed straight at it for manually verifying the blank mask. Remove once
-// testing is done.
-function findFirstLyricsQuestionIndex(questions) {
-    return questions.findIndex((question) => isLyricsQuestion(question));
-}
-
 /**
  * Builds a blank mask for a lyrics question's missing words, one underscore per character of each
  * word in the correct answer (e.g. "want you back" becomes "____ ___ ____"), so players see how
@@ -713,7 +706,6 @@ function startGame(roomCode) {
 
     const isInstantFinale = room.players.length === 2;
     const shuffledQuestions = isInstantFinale ? [] : shuffleArray(getAllQuestions());
-    const indexFirstLyricsQuestion = isInstantFinale ? -1 : findFirstLyricsQuestionIndex(shuffledQuestions);
 
     if (!isInstantFinale && shuffledQuestions.length === 0) {
         return null;
@@ -728,9 +720,7 @@ function startGame(roomCode) {
         playersHistory,
         leftPlayers: [],
         shuffledQuestions,
-        // TEMPORARY TEST TWEAK: start on the first lyrics question instead of index 0 to manually
-        // verify the blank mask. Remove once testing is done.
-        indexQuestion: indexFirstLyricsQuestion >= 0 ? indexFirstLyricsQuestion : 0,
+        indexQuestion: 0,
         playerOrder: isInstantFinale
             ? room.players.map((player) => player.idPlayer)
             : shuffleArray(room.players.map((player) => player.idPlayer)),
