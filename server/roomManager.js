@@ -1439,10 +1439,45 @@ function buildFinaleTurn(room) {
 }
 
 /**
- * Starts the finale between the two remaining alive players: reshuffles the full question pool
- * from scratch and has both players answer the same fixed number of questions simultaneously,
- * tracking each player's correct-answer count instead of lives. Only meant to be called once
- * exactly two alive players remain.
+ * Draws the next `count` questions from the room's shared shuffled question pool
+ * (`room.game.shuffledQuestions`/`indexQuestion`), continuing wherever the normal question
+ * rounds left off instead of reshuffling. The pool is only reshuffled from scratch when it is
+ * empty to begin with, or when it runs out mid-draw.
+ * @param {object} room - The room whose shared question pool to draw from.
+ * @param {number} count - How many questions to draw.
+ * @returns {Array<object>} The drawn questions, or an empty array if no questions are available.
+ */
+function drawQuestionsFromSharedPool(room, count) {
+    if (room.game.shuffledQuestions.length === 0) {
+        room.game.shuffledQuestions = shuffleArray(getAllQuestions());
+        room.game.indexQuestion = 0;
+    }
+
+    if (room.game.shuffledQuestions.length === 0) {
+        return [];
+    }
+
+    const drawnQuestions = [];
+
+    while (drawnQuestions.length < count) {
+        if (room.game.indexQuestion >= room.game.shuffledQuestions.length) {
+            room.game.shuffledQuestions = shuffleArray(getAllQuestions());
+            room.game.indexQuestion = 0;
+        }
+
+        drawnQuestions.push(room.game.shuffledQuestions[room.game.indexQuestion]);
+        room.game.indexQuestion += 1;
+    }
+
+    return drawnQuestions;
+}
+
+/**
+ * Starts the finale between the two remaining alive players: draws the next fixed number of
+ * questions from the room's shared shuffled question pool (continuing where the normal rounds
+ * left off, only reshuffling once that pool is exhausted) and has both players answer them
+ * simultaneously, tracking each player's correct-answer count instead of lives. Only meant to be
+ * called once exactly two alive players remain.
  * @param {string} roomCode - The code of the room.
  * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The first finale question, or null if the room has no active game, does not have exactly two
@@ -1461,7 +1496,7 @@ function startFinale(roomCode) {
         return null;
     }
 
-    const finaleQuestions = shuffleArray(getAllQuestions()).slice(0, FINALE_QUESTION_COUNT);
+    const finaleQuestions = drawQuestionsFromSharedPool(room, FINALE_QUESTION_COUNT);
 
     if (finaleQuestions.length === 0) {
         return null;

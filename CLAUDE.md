@@ -27,7 +27,11 @@
   der Stimmauszählung nur noch genau zwei Spieler am Leben, wird die `votingResolved`-Anzeige
   bewusst übersprungen (kein 15-sekündiges Auflösungs-Zwischenspiel) und stattdessen sofort das
   Finale gestartet (`startFinale()` in `roomManager.js`, siehe `finishVoting()` in `server.js`):
-  Der komplette Fragenpool wird einmal neu gemischt und von vorne begonnen, beide verbleibenden
+  Der Fragenpool wird dabei **nicht** neu gemischt: `drawQuestionsFromSharedPool()` zieht die
+  nächsten Fragen aus dem laufenden, gemeinsamen `shuffledQuestions`/`indexQuestion`-Pool weiter,
+  genau dort, wo die normalen Fragedurchgänge aufgehört haben — ein Neumischen passiert nur, wenn
+  dieser Pool währenddessen tatsächlich aufgebraucht wird (dieselbe Bedingung wie beim normalen
+  Zugwechsel), nicht automatisch bei jedem Finale-Start. Beide verbleibenden
   Spieler beantworten dieselben 5 Fragen (`FINALE_QUESTION_COUNT`) gleichzeitig statt abwechselnd
   — links und rechts stehen jeweils ein eigenes Eingabefeld samt Absenden-Button an der Stelle, wo
   sonst das einzelne Antwortfeld steht, nur das eigene ist aktiv, das andere zeigt
@@ -97,8 +101,8 @@
   seitig in `roomManager.js`, orchestriert über `finishVoting()`/`startTiebreakRound()`/
   `revealTiebreakAnswerAndAdvance()`/`startTiebreakVotingRound()`/`finishTiebreakVoting()` in
   `server.js`): Beide Kandidaten bekommen dieselbe eine Frage aus dem laufenden, gemeinsamen
-  Fragenpool (`shuffledQuestions`/`indexQuestion`, wie ein normaler Zug — kein eigener frisch
-  gemischter Pool wie beim Finale) gleichzeitig gestellt, mit demselben links/rechts-Eingabefeld-
+  Fragenpool (`shuffledQuestions`/`indexQuestion`, wie ein normaler Zug — genau derselbe Pool, aus
+  dem inzwischen auch das Finale zieht) gleichzeitig gestellt, mit demselben links/rechts-Eingabefeld-
   Layout wie im Finale, nur eben als eigene UI-Elemente (`#tiebreakAnswerRow`,
   `#inputTiebreakAnswerLeft`/`Right` usw. in `room.html`), damit sich `isFinalePhase`/
   `finaleIdPlayers`/`finaleAnswersByPlayer` und die neuen, rein für die Stichfrage genutzten
