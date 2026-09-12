@@ -386,6 +386,48 @@ function resetTiebreakUi() {
     textTiebreakVotingHint.hidden = true;
 }
 
+const TIMER_BAR_DANGER_THRESHOLD_MS = 5000;
+
+let timerBarColorTimeout = null;
+
+/**
+ * Applies the warning/danger color class matching how much time is left, and schedules the
+ * upcoming color switches (yellow at the halfway point, red once `TIMER_BAR_DANGER_THRESHOLD_MS`
+ * remain) based on the same server-authoritative start time as the width animation, so a
+ * resync (e.g. a backgrounded tab becoming visible again) re-derives the correct color instead of
+ * waiting for a timeout scheduled from the stale start time.
+ * @param {number} durationMs - The full duration of the timer.
+ * @param {number} elapsedMs - How much of that duration has already passed.
+ */
+function updateTimerBarColor(durationMs, elapsedMs) {
+    clearTimeout(timerBarColorTimeout);
+
+    const remainingMs = durationMs - elapsedMs;
+    const dangerThresholdMs = Math.min(TIMER_BAR_DANGER_THRESHOLD_MS, durationMs / 2);
+
+    if (remainingMs <= dangerThresholdMs) {
+        timerBarFill.classList.remove("timerBarWarning");
+        timerBarFill.classList.add("timerBarDanger");
+        return;
+    }
+
+    if (remainingMs <= durationMs / 2) {
+        timerBarFill.classList.add("timerBarWarning");
+        timerBarFill.classList.remove("timerBarDanger");
+        timerBarColorTimeout = setTimeout(
+            () => updateTimerBarColor(durationMs, durationMs - dangerThresholdMs),
+            remainingMs - dangerThresholdMs
+        );
+        return;
+    }
+
+    timerBarFill.classList.remove("timerBarWarning", "timerBarDanger");
+    timerBarColorTimeout = setTimeout(
+        () => updateTimerBarColor(durationMs, durationMs / 2),
+        remainingMs - durationMs / 2
+    );
+}
+
 /**
  * Restarts the shrinking timer bar animation for a new turn, based on the server's authoritative
  * start time rather than the moment this client happens to process the event. This keeps the bar
@@ -407,6 +449,8 @@ function restartTimerBar(durationMs, startedAt) {
     void timerBarFill.offsetWidth;
     timerBarFill.style.transition = `width ${remainingMs}ms linear`;
     timerBarFill.style.width = "0%";
+
+    updateTimerBarColor(durationMs, Math.max(0, Math.min(elapsedMs, durationMs)));
 }
 
 /**
@@ -429,6 +473,8 @@ function stopTimerBar() {
     activeTimer = null;
     clearTimeout(autoSubmitAnswerTimeout);
     autoSubmitAnswerTimeout = null;
+    clearTimeout(timerBarColorTimeout);
+    timerBarFill.classList.remove("timerBarWarning", "timerBarDanger");
 }
 
 /**
@@ -856,6 +902,8 @@ if (!playerName || !roomCode) {
         activeTimer = null;
         clearTimeout(autoSubmitAnswerTimeout);
         autoSubmitAnswerTimeout = null;
+        clearTimeout(timerBarColorTimeout);
+        timerBarFill.classList.remove("timerBarWarning", "timerBarDanger");
         timerBarFill.style.transition = "none";
         timerBarFill.style.width = "0%";
     }
@@ -1129,6 +1177,8 @@ if (!playerName || !roomCode) {
         activeTimer = null;
         clearTimeout(autoSubmitAnswerTimeout);
         autoSubmitAnswerTimeout = null;
+        clearTimeout(timerBarColorTimeout);
+        timerBarFill.classList.remove("timerBarWarning", "timerBarDanger");
         timerBarFill.style.transition = "none";
         timerBarFill.style.width = "100%";
     });

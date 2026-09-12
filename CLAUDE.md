@@ -418,18 +418,3 @@
   wurde das dadurch, dass die zuletzt in `#finaleReveal` angezeigten Antworten/richtige Antwort
   einer Finalfrage optisch über der Sieger-Anzeige in `#finaleResult` hängen blieben, obwohl beide
   Elemente korrekt `hidden` gesetzt bekamen.
-
-## Nächste Schritte (fachlich offen)
-
-- Punktevergabe/Statistiken über eine einzelne Partie hinaus.
-- Render-Service (`https://der-dummste-fliegt.onrender.com`) läuft bereits für `server/`, GitHub
-  Pages (`https://bread-005.github.io/der-dummste-fliegt/`) läuft bereits für `index.html`/
-  `room.html`/`frontend/` (siehe Architektur-Abschnitt und Deployment-Abschnitt in `README.md`).
-  Render zieht dabei **kein** automatisches Deploy aus GitHub, sondern das manuell per
-  `docker buildx build --platform linux/amd64 -t bread005/der-dummste-fliegt:latest --push .`
-  gebaute und zu Docker Hub gepushte Image — Änderungen an `server/` werden auf Render erst nach
-  diesem Build+Push-Schritt und einem manuellen Redeploy in Render sichtbar, ein reiner
-  `git push` nach GitHub bewirkt nichts. Die aktuelle CORS-Origin-Liste in `server.js` erlaubt
-  ausschließlich `http://localhost:63342` (PhpStorms eingebauter Vorschau-Server) und
-  `https://bread-005.github.io` — ein anderer lokaler Port scheitert dadurch mit einem
-  CORS-Fehler gegen den Render-Server.

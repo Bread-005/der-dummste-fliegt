@@ -202,6 +202,14 @@ button:hover {
     background-color: #2e9e44;
 }
 
+#timerBarFill.timerBarWarning {
+    background-color: #eab308;
+}
+
+#timerBarFill.timerBarDanger {
+    background-color: #dc2626;
+}
+
 #questionArea {
     position: fixed;
     top: 25%;
