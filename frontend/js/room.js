@@ -130,18 +130,6 @@ function readRoomCodeFromUrl() {
 }
 
 /**
- * Checks whether a player has answered every question known so far this round correctly, making
- * them immune from being voted for.
- * @param {string} idPlayerToCheck - The persistent id of the player to check.
- * @returns {boolean} True if the player has at least one known answer this round and all of them
- *   are correct.
- */
-function hasPlayerAnsweredAllCorrectly(idPlayerToCheck) {
-    const answerHistory = answersByPlayerThisRound[idPlayerToCheck];
-    return Boolean(answerHistory && answerHistory.length > 0 && answerHistory.every((entry) => entry.isCorrect));
-}
-
-/**
  * Checks whether a tiebreak candidate answered the current tiebreak question correctly, making
  * them immune from this tiebreak's re-vote (mirrors `hasPlayerAnsweredAllCorrectly()`, but against
  * the separate tiebreak answer history instead of the round's normal one).
@@ -241,10 +229,6 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
 
         if (player.idPlayer === idPlayerOnTurn) {
             itemPlayer.classList.add("currentTurn");
-        }
-
-        if (isVotingPhase && hasPlayerAnsweredAllCorrectly(player.idPlayer)) {
-            itemPlayer.classList.add("immuneFromVoting");
         }
 
         if (isTiebreakVotingPhase && tiebreakIdPlayers.includes(player.idPlayer)) {
@@ -1296,10 +1280,6 @@ if (!playerName || !roomCode) {
         }
 
         if (isVotingPhase) {
-            if (itemPlayer.classList.contains("immuneFromVoting")) {
-                return;
-            }
-
             hasVotedThisRound = true;
             itemPlayer.classList.add("votedByMe");
             listPlayersInGame.classList.add("voted");
