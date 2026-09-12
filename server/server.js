@@ -628,6 +628,10 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
 }
 
 socketServer.on("connection", (socket) => {
+    socket.on("timeSync", ({clientSentAt}) => {
+        socket.emit("timeSyncResponse", {clientSentAt, serverTime: Date.now()});
+    });
+
     socket.on("createRoom", ({playerName, idPlayer}) => {
         const {roomCode, players, settings} = createRoom(idPlayer, socket.id, playerName);
 

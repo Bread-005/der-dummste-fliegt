@@ -4,6 +4,37 @@ import {getOrCreatePlayerId} from "./playerIdentity.js";
 const MINIMUM_PLAYERS_TO_START = 2;
 const FINALE_QUESTION_COUNT = 5;
 
+let clockOffsetMs = 0;
+
+/**
+ * Returns the current time expressed on the server's clock, correcting for any drift between the
+ * client's and the server's system clock. Without this correction, a client whose clock runs even
+ * a few seconds ahead of or behind the server's would misjudge how much of a server-timestamped
+ * timer (e.g. `turnStartedAt`) has already elapsed, making the timer bar start already
+ * partially consumed or finish before the server's own timeout actually fires.
+ * @returns {number} The estimated current server time, in milliseconds since epoch.
+ */
+function getServerNow() {
+    return Date.now() + clockOffsetMs;
+}
+
+/**
+ * Measures the offset between the client's and the server's system clock via a single
+ * request/response round trip, and stores it in `clockOffsetMs` for `getServerNow()` to apply.
+ * Compensates for network latency by assuming the request and response each took half of the
+ * measured round-trip time to arrive.
+ * @param {import("socket.io-client").Socket} socket - The connected socket to sync time over.
+ */
+function syncClockWithServer(socket) {
+    const clientSentAt = Date.now();
+    socket.emit("timeSync", {clientSentAt});
+
+    socket.once("timeSyncResponse", ({serverTime}) => {
+        const roundTripMs = Date.now() - clientSentAt;
+        clockOffsetMs = serverTime + roundTripMs / 2 - Date.now();
+    });
+}
+
 const connectingScreen = document.getElementById("connectingScreen");
 const elementRoomScreen = document.getElementById("roomScreen");
 const elementGameScreen = document.getElementById("gameScreen");
@@ -440,7 +471,7 @@ function updateTimerBarColor(durationMs, elapsedMs) {
 function restartTimerBar(durationMs, startedAt) {
     activeTimer = {durationMs, startedAt};
 
-    const elapsedMs = Date.now() - startedAt;
+    const elapsedMs = getServerNow() - startedAt;
     const remainingMs = Math.max(0, durationMs - elapsedMs);
     const remainingRatio = remainingMs / durationMs;
 
@@ -463,7 +494,7 @@ function restartTimerBar(durationMs, startedAt) {
  */
 function stopTimerBar() {
     if (activeTimer) {
-        const elapsedMs = Date.now() - activeTimer.startedAt;
+        const elapsedMs = getServerNow() - activeTimer.startedAt;
         const remainingRatio = Math.max(0, activeTimer.durationMs - elapsedMs) / activeTimer.durationMs;
 
         timerBarFill.style.transition = "none";
@@ -494,7 +525,7 @@ function scheduleAutoSubmitAnswer(durationMs, startedAt, submitAnswerFn) {
 
     clearTimeout(autoSubmitAnswerTimeout);
 
-    const elapsedMs = Date.now() - startedAt;
+    const elapsedMs = getServerNow() - startedAt;
     const remainingMs = Math.max(0, durationMs - elapsedMs - AUTO_SUBMIT_SAFETY_MARGIN_MS);
 
     autoSubmitAnswerTimeout = setTimeout(submitAnswerFn, remainingMs);
@@ -527,6 +558,7 @@ if (!playerName || !roomCode) {
 
     socket.on("connect", () => {
         connectingScreen.hidden = true;
+        syncClockWithServer(socket);
         socket.emit("joinRoom", {playerName, roomCode, idPlayer});
     });
 
