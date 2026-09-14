@@ -11,6 +11,8 @@ import {
     hasEnoughPlayersToStart,
     updateStartingLives,
     updateQuestionsPerPlayerPerRound,
+    updateVotingDurationMs,
+    getRoomSettings,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,
@@ -47,7 +49,6 @@ import {loadQuestions, getAllQuestions} from "./questionRepository.js";
 
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
-const VOTING_DURATION_MS = 30000;
 const VOTING_RESULT_DURATION_MS = 15000;
 const TIEBREAK_VOTING_DURATION_MS = 10000;
 const FINALE_DURATION_MS = 30000;
@@ -136,30 +137,32 @@ function handleTurnResult(roomCode, turnResult) {
  * @param {string} roomCode - The code of the room.
  */
 function startVotingPhase(roomCode) {
+    const votingDurationMs = getRoomSettings(roomCode).votingDurationMs;
     const payload = {
         players: getPublicPlayers(roomCode),
         answersByPlayer: getAnswersGivenThisRound(roomCode),
-        votingDurationMs: VOTING_DURATION_MS,
+        votingDurationMs,
         votingStartedAt: Date.now(),
     };
 
     setGameDisplayState(roomCode, "votingStarted", payload);
     socketServer.to(roomCode).emit("votingStarted", payload);
 
-    scheduleVotingTimeout(roomCode);
+    scheduleVotingTimeout(roomCode, votingDurationMs);
 }
 
 /**
  * (Re-)schedules the automatic vote resolution for a room, replacing any previously scheduled
  * one. Fires when not every player has voted within the time limit.
  * @param {string} roomCode - The code of the room.
+ * @param {number} votingDurationMs - The room's configured voting duration, in milliseconds.
  */
-function scheduleVotingTimeout(roomCode) {
+function scheduleVotingTimeout(roomCode, votingDurationMs) {
     clearTimeout(turnTimeouts.get(roomCode));
 
     const timeoutHandle = setTimeout(() => {
         finishVoting(roomCode);
-    }, VOTING_DURATION_MS);
+    }, votingDurationMs);
 
     turnTimeouts.set(roomCode, timeoutHandle);
 }
@@ -659,11 +662,16 @@ socketServer.on("connection", (socket) => {
         socket.to(roomCode).emit("playersUpdated", {players});
     });
 
-    socket.on("updateRoomSettings", ({roomCode, startingLives, questionsPerPlayerPerRound}) => {
-        const settings =
-            startingLives !== undefined
-                ? updateStartingLives(roomCode, socket.id, startingLives)
-                : updateQuestionsPerPlayerPerRound(roomCode, socket.id, questionsPerPlayerPerRound);
+    socket.on("updateRoomSettings", ({roomCode, startingLives, questionsPerPlayerPerRound, votingDurationMs}) => {
+        let settings;
+
+        if (startingLives !== undefined) {
+            settings = updateStartingLives(roomCode, socket.id, startingLives);
+        } else if (questionsPerPlayerPerRound !== undefined) {
+            settings = updateQuestionsPerPlayerPerRound(roomCode, socket.id, questionsPerPlayerPerRound);
+        } else {
+            settings = updateVotingDurationMs(roomCode, socket.id, votingDurationMs);
+        }
 
         if (!settings) {
             return;

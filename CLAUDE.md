@@ -229,27 +229,40 @@
   (`toPublicPlayers()`/`getPublicPlayers()`) bereit und wird bei jedem `startGame()` auf
   `room.settings.startingLives` zurückgesetzt (nicht bei `startNextRound()`, das nur einen neuen
   Fragedurchgang ohne Lebensreset beginnt).
-- Der Host kann `startingLives` und `questionsPerPlayerPerRound` direkt im Warteraum einstellen,
-  bevor das Spiel läuft: Auf `room.html` sitzt dafür oberhalb des "Spiel starten"-Buttons ein
-  `#settingsSection`-Block mit einem 3×2-Raster (`#settingsGrid`), aktuell mit den beiden Kacheln
-  "Start-Herzen" (`#settingStartingLives`) und "Fragen pro Spieler pro Runde"
-  (`#settingQuestionsPerPlayerPerRound`), jede mit einem +/- Stepper. Der aktuelle Wert ist für
-  alle Spieler im Raum sichtbar, die +/- Buttons selbst blendet `renderStartingLivesSetting()`
-  bzw. `renderQuestionsPerPlayerPerRoundSetting()` in `room.js` per `.hidden` aber nur für den Host
-  ein (nicht bloß `disabled` — Nicht-Hosts sehen sie gar nicht); zusätzlich bleiben sie auch für den
-  Host `disabled`, sobald ein Spiel läuft (`hasGameStarted`) oder der jeweilige Min-/Max-Wert
-  erreicht ist (`MIN_/MAX_STARTING_LIVES = 1/5`, `MIN_/MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 1/5`
-  in `room.js`, serverseitig dieselben Grenzen in `roomManager.js`). Ein Klick sendet
-  `updateRoomSettings` mit entweder `startingLives` oder `questionsPerPlayerPerRound` an den
-  Server; `updateStartingLives()`/`updateQuestionsPerPlayerPerRound()` in `roomManager.js` prüfen
-  serverseitig erneut (nie dem Client vertrauend), dass der Absender tatsächlich der Host ist
-  (`isRoomHost()`) und kein Spiel läuft (`!room.game`), klemmen den Wert auf die erlaubte Spanne
-  und schreiben ihn in `room.settings`. Bei Erfolg broadcastet `server.js` das komplette
-  `settings`-Objekt per `roomSettingsUpdated` an alle im Raum; `room.js` übernimmt es 1:1 in die
-  Modul-Variablen `startingLives`/`questionsPerPlayerPerRound` und rendert neu. Neu erstellte
-  (`createRoom()`) wie beitretende (`joinRoom()`) Räume bekommen die aktuellen `room.settings` seit
-  dieser Änderung zusätzlich im `roomJoined`-Event mitgeschickt, damit auch ein später
-  beitretender oder rejoinender Client sofort die richtigen Werte anzeigt statt der Modul-Defaults.
+- Der Host kann `startingLives`, `questionsPerPlayerPerRound` und `votingDurationMs` direkt im
+  Warteraum einstellen, bevor das Spiel läuft: Auf `room.html` sitzt dafür oberhalb des "Spiel
+  starten"-Buttons ein `#settingsSection`-Block mit einem 3-Spalten-Raster (`#settingsGrid`,
+  `grid-template-columns: repeat(3, 1fr)`), aktuell mit genau den drei Kacheln, die eine volle
+  Zeile füllen: "Start-Herzen" (`#settingStartingLives`), "Fragen pro Spieler pro Runde"
+  (`#settingQuestionsPerPlayerPerRound`) und "Abstimmungszeit (Sek.)" (`#settingVotingDuration`),
+  jede mit einem +/- Stepper. Die Abstimmungszeit betrifft dabei ausschließlich die normale
+  Voting-Phase eines Durchgangs — weder das Finale noch eine Stichfrage-Abstimmung (`TIEBREAK_VOTING_DURATION_MS`)
+  haben eine eigene, einstellbare Dauer, beide bleiben fest codiert. Der aktuelle Wert ist für
+  alle Spieler im Raum sichtbar, die +/- Buttons selbst blendet `renderStartingLivesSetting()`,
+  `renderQuestionsPerPlayerPerRoundSetting()` bzw. `renderVotingDurationSetting()` in `room.js`
+  per `.hidden` aber nur für den Host ein (nicht bloß `disabled` — Nicht-Hosts sehen sie gar
+  nicht); zusätzlich bleiben sie auch für den Host `disabled`, sobald ein Spiel läuft
+  (`hasGameStarted`) oder der jeweilige Min-/Max-Wert erreicht ist (`MIN_/MAX_STARTING_LIVES =
+  1/5`, `MIN_/MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 1/5`, `MIN_/MAX_VOTING_DURATION_MS =
+  10000/120000` in Schritten von `VOTING_DURATION_STEP_MS = 5000` in `room.js`, serverseitig
+  dieselben Grenzen in `roomManager.js`). Ein Klick sendet `updateRoomSettings` mit genau einem
+  der drei Felder (`startingLives`, `questionsPerPlayerPerRound` oder `votingDurationMs`) an den
+  Server; `updateStartingLives()`/`updateQuestionsPerPlayerPerRound()`/`updateVotingDurationMs()`
+  in `roomManager.js` prüfen serverseitig erneut (nie dem Client vertrauend), dass der Absender
+  tatsächlich der Host ist (`isRoomHost()`) und kein Spiel läuft (`!room.game`), klemmen den Wert
+  auf die erlaubte Spanne (bei der Abstimmungszeit zusätzlich auf das nächste
+  `VOTING_DURATION_STEP_MS`-Vielfache gerundet) und schreiben ihn in `room.settings`. Bei Erfolg
+  broadcastet `server.js` das komplette `settings`-Objekt per `roomSettingsUpdated` an alle im
+  Raum; `room.js` übernimmt es 1:1 in die Modul-Variablen
+  `startingLives`/`questionsPerPlayerPerRound`/`votingDurationMs` und rendert neu. Neu erstellte
+  (`createRoom()`) wie beitretende (`joinRoom()`) Räume bekommen die aktuellen `room.settings`
+  zusätzlich im `roomJoined`-Event mitgeschickt, damit auch ein später beitretender oder
+  rejoinender Client sofort die richtigen Werte anzeigt statt der Modul-Defaults. `startVotingPhase()`
+  in `server.js` liest `votingDurationMs` bei jedem Start der Voting-Phase frisch aus
+  `getRoomSettings(roomCode)`, statt (wie zuvor bei allen drei Zeitleisten-Phasen) eine feste
+  Modul-Konstante zu verwenden — sowohl das `votingStarted`-Event als auch der serverseitige
+  Auflösungs-Timeout (`scheduleVotingTimeout()`) verwenden denselben, zur Startzeit der Phase
+  gültigen Wert.
 - Voting-Logik lebt ebenfalls in `roomManager.js`: `room.game.votes` (idVoter → idVotedFor) und
   `room.game.answersGiven` (idPlayer → Array aus `{questionText, answerGiven, correctAnswer,
   isCorrect}`, eine Zeile pro beantworteter Frage) werden bei `startGame()`/`startNextRound()`

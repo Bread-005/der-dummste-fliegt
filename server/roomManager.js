@@ -15,6 +15,10 @@ const MAX_STARTING_LIVES = 5;
 const DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2;
 const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
 const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
+const DEFAULT_VOTING_DURATION_MS = 30000;
+const MIN_VOTING_DURATION_MS = 10000;
+const MAX_VOTING_DURATION_MS = 120000;
+const VOTING_DURATION_STEP_MS = 5000;
 const MINIMUM_PLAYERS_TO_START = 2;
 const FINALE_QUESTION_COUNT = 5;
 const FINALE_ROUND_NUMBER = 1000;
@@ -512,7 +516,7 @@ function buildVotingResultForHistory(room, votes, idPlayersLosingLife) {
  * @param {string} idPlayer - The persistent id of the creating player.
  * @param {string} idSocket - The current socket id of the creating player.
  * @param {string} playerName - The display name of the creating player.
- * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number}}} The created room.
+ * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number, votingDurationMs: number}}} The created room.
  */
 function createRoom(idPlayer, idSocket, playerName) {
     const roomCode = generateRoomCode();
@@ -532,6 +536,7 @@ function createRoom(idPlayer, idSocket, playerName) {
         settings: {
             startingLives: DEFAULT_STARTING_LIVES,
             questionsPerPlayerPerRound: DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND,
+            votingDurationMs: DEFAULT_VOTING_DURATION_MS,
         },
     };
 
@@ -570,7 +575,7 @@ function isNameTakenInRoom(roomCode, playerName, idPlayer) {
  * @param {string} idPlayer - The persistent id of the joining player.
  * @param {string} idSocket - The current socket id of the joining player.
  * @param {string} playerName - The display name of the joining player.
- * @returns {{players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number}}|null}
+ * @returns {{players: Array<{idPlayer: string, name: string, isHost: boolean}>, settings: {startingLives: number, questionsPerPlayerPerRound: number, votingDurationMs: number}}|null}
  *   The updated player list and current room settings, or null if the room does not exist.
  */
 function joinRoom(roomCode, idPlayer, idSocket, playerName) {
@@ -1740,6 +1745,49 @@ function updateQuestionsPerPlayerPerRound(roomCode, idSocket, questionsPerPlayer
 }
 
 /**
+ * Updates a room's voting-duration setting, i.e. how long players get to vote for someone during
+ * the normal voting phase. This does not affect the finale's or a tiebreak's own fixed durations.
+ * Only the room's host may change it, and only while no game is in progress in that room, since
+ * changing it mid-vote would desync the already-running timer bar.
+ * @param {string} roomCode - The code of the room.
+ * @param {string} idSocket - The socket id of the player requesting the change.
+ * @param {number} votingDurationMs - The requested voting duration in milliseconds, clamped to
+ *   `[MIN_VOTING_DURATION_MS, MAX_VOTING_DURATION_MS]` and rounded to the nearest
+ *   `VOTING_DURATION_STEP_MS`.
+ * @returns {{startingLives: number, questionsPerPlayerPerRound: number, votingDurationMs: number}|null} The
+ *   room's updated settings, or null if the change was rejected (room not found, requester not
+ *   host, or a game is currently running).
+ */
+function updateVotingDurationMs(roomCode, idSocket, votingDurationMs) {
+    const room = rooms.get(roomCode);
+
+    if (!room || room.game || !isRoomHost(roomCode, idSocket)) {
+        return null;
+    }
+
+    const roundedVotingDurationMs = Math.round(votingDurationMs / VOTING_DURATION_STEP_MS) * VOTING_DURATION_STEP_MS;
+    const clampedVotingDurationMs = Math.min(
+        MAX_VOTING_DURATION_MS,
+        Math.max(MIN_VOTING_DURATION_MS, roundedVotingDurationMs),
+    );
+    room.settings.votingDurationMs = clampedVotingDurationMs;
+
+    return {...room.settings};
+}
+
+/**
+ * Returns a room's current settings.
+ * @param {string} roomCode - The code of the room.
+ * @returns {{startingLives: number, questionsPerPlayerPerRound: number, votingDurationMs: number}|null} The
+ *   room's settings, or null if the room does not exist.
+ */
+function getRoomSettings(roomCode) {
+    const room = rooms.get(roomCode);
+
+    return room ? {...room.settings} : null;
+}
+
+/**
  * Checks whether a room currently has an active game.
  * @param {string} roomCode - The code of the room.
  * @returns {boolean} True if a game is in progress.
@@ -1785,6 +1833,8 @@ export {
     hasEnoughPlayersToStart,
     updateStartingLives,
     updateQuestionsPerPlayerPerRound,
+    updateVotingDurationMs,
+    getRoomSettings,
     startGame,
     revivePlayersAfterFinale,
     startNextRound,

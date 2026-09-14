@@ -89,6 +89,9 @@ const buttonStartingLivesIncrease = document.getElementById("buttonStartingLives
 const textQuestionsPerPlayerPerRoundValue = document.getElementById("textQuestionsPerPlayerPerRoundValue");
 const buttonQuestionsPerPlayerPerRoundDecrease = document.getElementById("buttonQuestionsPerPlayerPerRoundDecrease");
 const buttonQuestionsPerPlayerPerRoundIncrease = document.getElementById("buttonQuestionsPerPlayerPerRoundIncrease");
+const textVotingDurationValue = document.getElementById("textVotingDurationValue");
+const buttonVotingDurationDecrease = document.getElementById("buttonVotingDurationDecrease");
+const buttonVotingDurationIncrease = document.getElementById("buttonVotingDurationIncrease");
 
 const MIN_STARTING_LIVES = 1;
 const MAX_STARTING_LIVES = 5;
@@ -96,10 +99,15 @@ const DEFAULT_STARTING_LIVES = 3;
 const MIN_QUESTIONS_PER_PLAYER_PER_ROUND = 1;
 const MAX_QUESTIONS_PER_PLAYER_PER_ROUND = 5;
 const DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND = 2;
+const MIN_VOTING_DURATION_MS = 10000;
+const MAX_VOTING_DURATION_MS = 120000;
+const DEFAULT_VOTING_DURATION_MS = 30000;
+const VOTING_DURATION_STEP_MS = 5000;
 
 let currentPlayers = [];
 let startingLives = DEFAULT_STARTING_LIVES;
 let questionsPerPlayerPerRound = DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND;
+let votingDurationMs = DEFAULT_VOTING_DURATION_MS;
 let idCurrentTurnPlayer = null;
 let hasGameStarted = false;
 let isVotingPhase = false;
@@ -381,6 +389,7 @@ function renderPlayerLists(idOwnPlayer) {
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     renderStartingLivesSetting(ownPlayer?.isHost ?? false);
     renderQuestionsPerPlayerPerRoundSetting(ownPlayer?.isHost ?? false);
+    renderVotingDurationSetting(ownPlayer?.isHost ?? false);
 
     buttonStartGame.textContent = finaleResult.hidden ? "Spiel starten" : "Spiel neu starten";
 
@@ -426,6 +435,24 @@ function renderQuestionsPerPlayerPerRoundSetting(isHost) {
         !canEdit || questionsPerPlayerPerRound <= MIN_QUESTIONS_PER_PLAYER_PER_ROUND;
     buttonQuestionsPerPlayerPerRoundIncrease.disabled =
         !canEdit || questionsPerPlayerPerRound >= MAX_QUESTIONS_PER_PLAYER_PER_ROUND;
+}
+
+/**
+ * Renders the voting-duration setting control: shows the current value (in seconds) to everyone,
+ * and shows the +/- buttons only to the host, enabled only while no game is currently running in
+ * the room. This only affects the normal voting phase's time limit, not the finale's or a
+ * tiebreak's own fixed durations.
+ * @param {boolean} isHost - Whether the viewing player is the room's host.
+ */
+function renderVotingDurationSetting(isHost) {
+    textVotingDurationValue.textContent = String(votingDurationMs / 1000);
+
+    buttonVotingDurationDecrease.hidden = !isHost;
+    buttonVotingDurationIncrease.hidden = !isHost;
+
+    const canEdit = isHost && !hasGameStarted;
+    buttonVotingDurationDecrease.disabled = !canEdit || votingDurationMs <= MIN_VOTING_DURATION_MS;
+    buttonVotingDurationIncrease.disabled = !canEdit || votingDurationMs >= MAX_VOTING_DURATION_MS;
 }
 
 /**
@@ -1174,6 +1201,7 @@ if (!playerName || !roomCode) {
         currentPlayers = players;
         startingLives = settings.startingLives;
         questionsPerPlayerPerRound = settings.questionsPerPlayerPerRound;
+        votingDurationMs = settings.votingDurationMs;
         renderPlayerLists(idPlayer);
         applyGameStateOnRejoin(gameState);
     });
@@ -1186,6 +1214,7 @@ if (!playerName || !roomCode) {
     socket.on("roomSettingsUpdated", ({settings}) => {
         startingLives = settings.startingLives;
         questionsPerPlayerPerRound = settings.questionsPerPlayerPerRound;
+        votingDurationMs = settings.votingDurationMs;
         renderPlayerLists(idPlayer);
     });
 
@@ -1276,6 +1305,14 @@ if (!playerName || !roomCode) {
 
     buttonQuestionsPerPlayerPerRoundIncrease.addEventListener("click", () => {
         socket.emit("updateRoomSettings", {roomCode, questionsPerPlayerPerRound: questionsPerPlayerPerRound + 1});
+    });
+
+    buttonVotingDurationDecrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, votingDurationMs: votingDurationMs - VOTING_DURATION_STEP_MS});
+    });
+
+    buttonVotingDurationIncrease.addEventListener("click", () => {
+        socket.emit("updateRoomSettings", {roomCode, votingDurationMs: votingDurationMs + VOTING_DURATION_STEP_MS});
     });
 
     inputAnswer.addEventListener("keydown", (event) => {
