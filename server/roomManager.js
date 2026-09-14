@@ -20,6 +20,7 @@ const MIN_VOTING_DURATION_MS = 10000;
 const MAX_VOTING_DURATION_MS = 120000;
 const VOTING_DURATION_STEP_MS = 5000;
 const MINIMUM_PLAYERS_TO_START = 2;
+const TEST_PLAYER_NAMES = ["brot1", "brot2", "brot3"];
 const FINALE_QUESTION_COUNT = 5;
 const FINALE_ROUND_NUMBER = 1000;
 
@@ -428,6 +429,21 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
  * @returns {Array<{playerName: string, questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>}
  *   The flattened answer entries.
  */
+/**
+ * Checks whether any of the given players has one of the reserved test names (`Brot1`, `Brot2`,
+ * `Brot3`, matched case-insensitively as a substring so e.g. "Brot1 " or "xBrot2" also count).
+ * Used to keep the game history free of the rounds played while manually testing the game.
+ * @param {Array<{name: string}>} players - The players to check.
+ * @returns {boolean} True if any player's name contains a reserved test name.
+ */
+function hasTestPlayerName(players) {
+    return players.some((player) => {
+        const normalizedName = player.name.toLowerCase();
+
+        return TEST_PLAYER_NAMES.some((testName) => normalizedName.includes(testName));
+    });
+}
+
 function flattenAnswersGiven(room, answersGiven) {
     return Object.entries(answersGiven).flatMap(([idPlayer, answers]) =>
         answers.map((answer) => ({playerName: getPlayerNameForHistory(room, idPlayer), ...answer})),
@@ -436,10 +452,15 @@ function flattenAnswersGiven(room, answersGiven) {
 
 /**
  * Persists a room's current round history (`room.game.historyRounds`), fire-and-forget. Called
- * after every round (question, tiebreak, or finale question) finishes.
+ * after every round (question, tiebreak, or finale question) finishes. Does nothing for a test
+ * game (`room.game.isTestGame`, see `hasTestPlayerName()`).
  * @param {object} room - The internal room record.
  */
 function persistRoundsSnapshot(room) {
+    if (room.game.isTestGame) {
+        return;
+    }
+
     saveRoundsSnapshot(room.game.idGame, room.game.historyRounds).catch(console.error);
 }
 
@@ -471,10 +492,15 @@ function abortCurrentRoundToHistory(roomCode) {
 /**
  * Persists a room's current player roster (`room.game.playersHistory`), fire-and-forget. Called
  * whenever the roster of players who took part in the game actually changes: the game started, or
- * a new player joined mid-game (as a spectator).
+ * a new player joined mid-game (as a spectator). Does nothing for a test game
+ * (`room.game.isTestGame`, see `hasTestPlayerName()`).
  * @param {object} room - The internal room record.
  */
 function persistPlayersSnapshot(room) {
+    if (room.game.isTestGame) {
+        return;
+    }
+
     savePlayersSnapshot(room.game.idGame, Array.from(room.game.playersHistory.values())).catch(console.error);
 }
 
@@ -694,6 +720,8 @@ function hasEnoughPlayersToStart(roomCode) {
  * entirely and the game goes straight into the finale between the two of them instead. Only the
  * room's host is meant to trigger this (checked by the caller); the caller must also check
  * `hasEnoughPlayersToStart()` beforehand, as this function does not enforce the minimum itself.
+ * If any player's name contains a reserved test name (see `hasTestPlayerName()`), the game is
+ * marked as a test game (`room.game.isTestGame`) and no game history is recorded for it.
  * @param {string} roomCode - The code of the room.
  * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null}
  *   The first turn, the first finale question (for a two-player game), or null if the room does
@@ -712,8 +740,11 @@ function startGame(roomCode) {
     });
 
     const idGame = randomUUID();
+    const isTestGame = hasTestPlayerName(room.players);
 
-    createGameHistoryDocument(idGame, roomCode, room.settings).catch(console.error);
+    if (!isTestGame) {
+        createGameHistoryDocument(idGame, roomCode, room.settings).catch(console.error);
+    }
 
     const playersHistory = new Map(
         room.players.map((player) => [player.idPlayer, {idPlayer: player.idPlayer, name: player.name}]),
@@ -728,6 +759,7 @@ function startGame(roomCode) {
 
     room.game = {
         idGame,
+        isTestGame,
         startedAt: new Date(),
         roundNumber: 1,
         tiebreakRounds: [],
@@ -1798,13 +1830,15 @@ function isGameActive(roomCode) {
 
 /**
  * Records a finished game's end time into the game history. Must be called before `stopGame()`
- * clears `room.game`, since it reads `room.game.idGame`.
+ * clears `room.game`, since it reads `room.game.idGame`. Does nothing for a test game
+ * (`room.game.isTestGame`, see `hasTestPlayerName()`), since no game history was recorded for it
+ * in the first place.
  * @param {string} roomCode - The code of the room.
  */
 function finalizeGameRecord(roomCode) {
     const room = rooms.get(roomCode);
 
-    if (!room || !room.game) {
+    if (!room || !room.game || room.game.isTestGame) {
         return;
     }
 
