@@ -30,4 +30,26 @@ function getAllQuestions() {
     return [...questions];
 }
 
-export {loadQuestions, getAllQuestions};
+/**
+ * Inserts new question documents into the "questions" collection, stamping each with a fresh
+ * `createdAt`. Does not update the in-memory cache — like any other database change, the new
+ * questions only become playable after the server process is restarted (see `loadQuestions()`).
+ * @param {Array<{text: string, answers: string[], tolerance?: number}>} newQuestions - The
+ *   questions to add, without `_id`/`createdAt` (both are assigned here).
+ * @returns {Promise<void>}
+ */
+async function insertQuestions(newQuestions) {
+    if (newQuestions.length === 0) {
+        return;
+    }
+
+    await mongoClient.connect();
+    const questionDocuments = newQuestions.map((newQuestion) => ({
+        ...newQuestion,
+        createdAt: new Date().toISOString(),
+    }));
+
+    await mongoClient.db("Misc").collection("questions").insertMany(questionDocuments);
+}
+
+export {loadQuestions, getAllQuestions, insertQuestions};

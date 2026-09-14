@@ -11,6 +11,8 @@ dist/
 build/
 coverage/
 *.tmp
+server/scripts/addQuestionsLocally.js
+server/questionPool.json
 .dockerignore
 docker-compose.yml
 Dockerfile
