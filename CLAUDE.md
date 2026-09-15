@@ -158,6 +158,43 @@
 - Räume und Spieler werden ausschließlich in-memory gehalten (`server/roomManager.js`, `Map`).
   Es gibt keine Persistenz — bei Server-Neustart (z. B. Render-Redeploy) gehen alle aktiven
   Räume verloren.
+- Der Fragenpool wächst automatisch: Nach jedem Spiel, das kein Testspiel war
+  (`room.game.isTestGame`, siehe `hasTestPlayerName()`), zieht `replenishQuestionsFromPool()`
+  (`server/questionPool.js`) bis zu `QUESTIONS_TO_ADD_PER_GAME` (10) zufällige Fragen aus der
+  MongoDB-Collection `unreleasedQuestions` und fügt sie in die aktive `questions`-Collection ein,
+  aus der `loadQuestions()` beim Serverstart liest. War die Runde dagegen ein reines
+  Sofort-Finale — ein Raum mit von Anfang an nur zwei Spielern, der den normalen Fragedurchgang
+  komplett übersprungen hat (`room.game.isInstantFinale`, gesetzt in `startGame()` und über die
+  gesamte Spieldauer unverändert, auch wenn das Finale später durch einen ausscheidenden Spieler
+  vorzeitig beendet wird) —, zieht `finalizeGameRecord()` in `roomManager.js` stattdessen nur
+  `QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME` (1) Frage nach, da ein solches Spiel insgesamt
+  deutlich weniger Fragen aus dem laufenden Pool verbraucht hat. Aufgerufen wird das aus
+  `finalizeGameRecord()` in `roomManager.js`, direkt neben dem bestehenden Game-History-Abschluss.
+  Das Ziehen läuft über `drawQuestionsFromPool()` (`server/questionPoolRepository.js`): Jede
+  Kandidatin wird per `$sample` zufällig ausgewählt und dann einzeln per `deleteOne` auf ihre `_id`
+  entfernt — atomar pro Dokument, sodass zwei gleichzeitig endende Spiele nie dieselbe Frage
+  doppelt ziehen (bei einem Konflikt sampelt der Verlierer einfach erneut, ausgenommen die bereits
+  vergebene `_id`). Läuft die Collection leer, gibt es einfach weniger Fragen zurück (bis hinunter
+  zu keiner), ohne Fehler. Neu eingefügte Fragen werden wie jede andere Datenbankänderung erst nach
+  einem Server-Neustart tatsächlich spielbar (`loadQuestions()` cacht nur beim Start, siehe
+  Architektur-Abschnitt) und behalten ihr `difficulty`-Feld (Allgemeinwissen-Schwierigkeit 1-10,
+  ohne Gameplay-Effekt) auch in der `questions`-Collection — `replenishQuestionsFromPool()` fügt die
+  gezogenen Dokumente unverändert ein. Der Vorrat wird nicht im laufenden Betrieb befüllt, sondern
+  ausschließlich lokal: `server/questionPool.json` (git- und docker-ignoriert, siehe
+  `.gitignore`/`.dockerignore`) ist eine Staging-Datei mit neu kuratierten Fragen samt
+  `difficulty`. Das ebenfalls lokale, git-ignorierte Skript `server/scripts/addQuestionsLocally.js`
+  liest diese Datei, verbindet sich dafür mit einem eigenen, direkt im Skript eingetragenen
+  Connection-String (nicht über Umgebungsvariablen wie `questionPoolRepository.js`, da diese Datei
+  ohnehin nie ins Repo/Docker-Image gelangt), fügt den Inhalt per `insertMany()` in
+  `unreleasedQuestions` ein und leert anschließend `questionPool.json` wieder (`[]`), damit ein
+  erneuter Lauf dieselben Fragen nicht doppelt einfügt. `plainQuestions.txt` im Repo-Root ist die
+  ursprüngliche Rohtext-Quelle (Format `Frage N [Schwierigkeit]: ...` / `Gültige Antworten: ...`),
+  aus der `questionPool.json` geparst wurde; unter den gültigen Antworten stehen dort bewusst
+  keine führenden Artikel mehr (z. B. "Giraffe" statt zusätzlich "Die Giraffe").
+- Fragen, die vor der Beibehaltung von `difficulty` beim Verschieben aus dem Pool in die
+  `questions`-Collection gelangt sind, wurden per einmaligem, inzwischen wieder entfernten
+  Nachpflege-Skript auf einen kuratierten `difficulty`-Wert (1-10) gebracht; alle Dokumente in
+  `questions` tragen dieses Feld daher inzwischen durchgängig.
 
 ## Architektur
 

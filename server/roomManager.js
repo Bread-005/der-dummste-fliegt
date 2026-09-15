@@ -6,7 +6,11 @@ import {
     savePlayersSnapshot,
     finalizeGameHistory,
 } from "./gameRepository.js";
-import {replenishQuestionsFromPool} from "./questionPool.js";
+import {
+    replenishQuestionsFromPool,
+    QUESTIONS_TO_ADD_PER_GAME,
+    QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME,
+} from "./questionPool.js";
 
 const rooms = new Map();
 const DISCONNECT_GRACE_PERIOD_MS = 5000;
@@ -761,6 +765,7 @@ function startGame(roomCode) {
     room.game = {
         idGame,
         isTestGame,
+        isInstantFinale,
         startedAt: new Date(),
         roundNumber: 1,
         tiebreakRounds: [],
@@ -1834,7 +1839,10 @@ function isGameActive(roomCode) {
  * (`replenishQuestionsFromPool()`) with a batch of new questions from `questionPool.json`. Must be
  * called before `stopGame()` clears `room.game`, since it reads `room.game.idGame`. Does nothing
  * for a test game (`room.game.isTestGame`, see `hasTestPlayerName()`), since no game history was
- * recorded for it in the first place, and it should not consume the question pool either.
+ * recorded for it in the first place, and it should not consume the question pool either. A game
+ * that skipped the normal question rounds entirely (`room.game.isInstantFinale`, a room that only
+ * ever had two players) only replenishes `QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME` question
+ * instead of the usual `QUESTIONS_TO_ADD_PER_GAME`, since it consumed far fewer questions overall.
  * @param {string} roomCode - The code of the room.
  */
 function finalizeGameRecord(roomCode) {
@@ -1844,8 +1852,12 @@ function finalizeGameRecord(roomCode) {
         return;
     }
 
+    const questionsToReplenish = room.game.isInstantFinale
+        ? QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME
+        : QUESTIONS_TO_ADD_PER_GAME;
+
     finalizeGameHistory(room.game.idGame, new Date()).catch(console.error);
-    replenishQuestionsFromPool().catch(console.error);
+    replenishQuestionsFromPool(questionsToReplenish).catch(console.error);
 }
 
 /**
