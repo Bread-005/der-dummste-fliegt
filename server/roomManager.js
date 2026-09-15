@@ -12,6 +12,14 @@ import {
     QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME,
 } from "./questionPool.js";
 
+/**
+ * @typedef {object} RoomSettings
+ * @property {number} startingLives
+ * @property {number} questionsPerPlayerPerRound
+ * @property {number} votingDurationMs
+ */
+
+/** @type {Map<string, {players: Array<object>, idHost: string, game: object|null, settings: RoomSettings}>} */
 const rooms = new Map();
 const DISCONNECT_GRACE_PERIOD_MS = 5000;
 const DEFAULT_STARTING_LIVES = 3;
@@ -644,7 +652,7 @@ function joinRoom(roomCode, idPlayer, idSocket, playerName) {
  * game in progress keeps running for the remaining players; the caller uses `removalEffect` to
  * resync the turn or voting phase if needed.
  * @param {string} idSocket - The socket id of the leaving player.
- * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|null)}}|null}
+ * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}|null}
  *   The affected room, or null if none found.
  */
 function leaveRoom(idSocket) {
@@ -670,7 +678,7 @@ function leaveRoom(idSocket) {
  * without the room being torn down in between. If the grace period elapses without a rejoin, a
  * game in progress keeps running for the remaining players.
  * @param {string} idSocket - The socket id that disconnected.
- * @param {(affectedRoom: {roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|null)}}) => void} onRemoved -
+ * @param {(affectedRoom: {roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}) => void} onRemoved -
  *   Called once the player is actually removed, if the room still exists.
  */
 function scheduleRemovalOnDisconnect(idSocket, onRemoved) {
@@ -728,7 +736,7 @@ function hasEnoughPlayersToStart(roomCode) {
  * If any player's name contains a reserved test name (see `hasTestPlayerName()`), the game is
  * marked as a test game (`room.game.isTestGame`) and no game history is recorded for it.
  * @param {string} roomCode - The code of the room.
- * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null}
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The first turn, the first finale question (for a two-player game), or null if the room does
  *   not exist or no questions are available.
  */
@@ -1773,11 +1781,10 @@ function updateQuestionsPerPlayerPerRound(roomCode, idSocket, questionsPerPlayer
         return null;
     }
 
-    const clampedQuestionsPerPlayerPerRound = Math.min(
+    room.settings.questionsPerPlayerPerRound = Math.min(
         MAX_QUESTIONS_PER_PLAYER_PER_ROUND,
         Math.max(MIN_QUESTIONS_PER_PLAYER_PER_ROUND, Math.round(questionsPerPlayerPerRound)),
     );
-    room.settings.questionsPerPlayerPerRound = clampedQuestionsPerPlayerPerRound;
 
     return {...room.settings};
 }
@@ -1804,11 +1811,10 @@ function updateVotingDurationMs(roomCode, idSocket, votingDurationMs) {
     }
 
     const roundedVotingDurationMs = Math.round(votingDurationMs / VOTING_DURATION_STEP_MS) * VOTING_DURATION_STEP_MS;
-    const clampedVotingDurationMs = Math.min(
+    room.settings.votingDurationMs = Math.min(
         MAX_VOTING_DURATION_MS,
         Math.max(MIN_VOTING_DURATION_MS, roundedVotingDurationMs),
     );
-    room.settings.votingDurationMs = clampedVotingDurationMs;
 
     return {...room.settings};
 }

@@ -108,7 +108,7 @@ function broadcastTurn(roomCode, turn) {
  * Also handles `startGame()`'s two-player case, where the very first result is already a finale
  * question instead of a normal turn.
  * @param {string} roomCode - The code of the room.
- * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>}|null} turnResult -
+ * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null} turnResult -
  *   The result returned by `startGame()`, `advanceTurn()`, or `startNextRound()`.
  */
 function handleTurnResult(roomCode, turnResult) {
@@ -137,7 +137,7 @@ function handleTurnResult(roomCode, turnResult) {
  * @param {string} roomCode - The code of the room.
  */
 function startVotingPhase(roomCode) {
-    const votingDurationMs = getRoomSettings(roomCode).votingDurationMs;
+    const votingDurationMs = getRoomSettings(roomCode)?.votingDurationMs;
     const payload = {
         players: getPublicPlayers(roomCode),
         answersByPlayer: getAnswersGivenThisRound(roomCode),
