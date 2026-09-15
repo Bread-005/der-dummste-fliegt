@@ -121,17 +121,101 @@ function hasNumericToleranceCheck(question) {
     return typeof question.tolerance === "number" && parseAnswerNumber(question.answers[0]) !== null;
 }
 
+const NAME_QUESTION_TEXT_PREFIX = "Nenne";
+
+const GERMAN_NUMBER_WORD_TO_COUNT = {
+    ein: 1,
+    eine: 1,
+    einen: 1,
+    einem: 1,
+    einer: 1,
+    eines: 1,
+    zwei: 2,
+    drei: 3,
+    vier: 4,
+    fünf: 5,
+    sechs: 6,
+    sieben: 7,
+    acht: 8,
+    neun: 9,
+    zehn: 10,
+};
+
+const GERMAN_NUMBER_WORD_PATTERN = new RegExp(
+    `\\b(${Object.keys(GERMAN_NUMBER_WORD_TO_COUNT).join("|")})\\b`,
+    "i",
+);
+
+/**
+ * Checks whether a question is a "Nenne" question, recognized by its text starting with "Nenne"
+ * (e.g. "Nenne mir ein Wort welches mit A beginnt."), rather than a dedicated `type` field. Unlike
+ * other questions, whose `answers` array holds synonyms of one single fact, a "Nenne" question's
+ * `answers` array holds the full, finite set of individually valid answers (e.g. all 50 US states),
+ * any distinct subset of which a player may name.
+ * @param {{text: string}} question - The question to check.
+ * @returns {boolean} True if the question is a "Nenne" question.
+ */
+function isNameQuestion(question) {
+    return question.text.startsWith(NAME_QUESTION_TEXT_PREFIX);
+}
+
+/**
+ * Reads how many distinct answers a "Nenne" question requires, from the German number word
+ * following "Nenne" in its text (e.g. "Nenne zwei Staaten..." requires 2). Defaults to 1 if no
+ * recognized number word is found (e.g. "Nenne mir ein Wort...").
+ * @param {string} questionText - The question's text.
+ * @returns {number} The number of distinct answers required.
+ */
+function getRequiredAnswerCount(questionText) {
+    const numberWordMatch = questionText.match(GERMAN_NUMBER_WORD_PATTERN);
+    return numberWordMatch ? GERMAN_NUMBER_WORD_TO_COUNT[numberWordMatch[1].toLowerCase()] : 1;
+}
+
+/**
+ * Checks whether a given answer to a "Nenne" question is accepted: the player must submit exactly
+ * as many comma-separated, distinct answers as the question requires (see `getRequiredAnswerCount()`),
+ * and every one of them must match one of the question's accepted answers.
+ * @param {string} answerGiven - The comma-separated answer text a player submitted.
+ * @param {{text: string, answers: string[]}} question - The "Nenne" question, with its full set of
+ * individually valid answers.
+ * @returns {boolean} True if the given answer satisfies the question's requirement.
+ */
+function isNameAnswerAccepted(answerGiven, question) {
+    const requiredAnswerCount = getRequiredAnswerCount(question.text);
+    const normalizedGivenAnswers = answerGiven
+        .split(",")
+        .map((part) => normalizeAnswerText(part))
+        .filter((part) => part !== "");
+    if (normalizedGivenAnswers.length !== requiredAnswerCount) {
+        return false;
+    }
+
+    const uniqueGivenAnswers = new Set(normalizedGivenAnswers);
+    if (uniqueGivenAnswers.size !== normalizedGivenAnswers.length) {
+        return false;
+    }
+
+    const normalizedAcceptedAnswers = question.answers.map((acceptedAnswer) => normalizeAnswerText(acceptedAnswer));
+    return normalizedGivenAnswers.every((givenAnswer) => normalizedAcceptedAnswers.includes(givenAnswer));
+}
+
 /**
  * Checks whether a given answer matches any of a question's accepted answers (e.g. "Goethe" and
  * "Johann Wolfgang von Goethe" both accepted for the same question), ignoring case and surrounding
  * whitespace. Questions whose correct answer is numeric and that carry a `tolerance` are instead
  * checked as a numeric range around their correct value (see `isNumericAnswerAccepted()`).
+ * "Nenne" questions are instead checked against their full set of individually valid answers (see
+ * `isNameAnswerAccepted()`).
  * @param {string} answerGiven - The answer text a player submitted.
- * @param {{answers: string[], tolerance?: number}} question - The question, with its accepted
- * answers.
+ * @param {{text: string, answers: string[], tolerance?: number}} question - The question, with its
+ * accepted answers.
  * @returns {boolean} True if the given answer matches any accepted answer.
  */
 function isAnswerAccepted(answerGiven, question) {
+    if (isNameQuestion(question)) {
+        return isNameAnswerAccepted(answerGiven, question);
+    }
+
     if (hasNumericToleranceCheck(question)) {
         return isNumericAnswerAccepted(answerGiven, question);
     }
@@ -143,12 +227,20 @@ function isAnswerAccepted(answerGiven, question) {
 /**
  * Reads the display-friendly correct answer of a question: the first of its accepted answers,
  * treated as the canonical one shown to clients. For questions graded with a numeric tolerance,
- * the accepted tolerance is appended in parentheses (e.g. "206 (+/- 10)").
- * @param {{answers: string[], tolerance?: number}} question - The question, with its accepted
- * answers.
+ * the accepted tolerance is appended in parentheses (e.g. "206 (+/- 10)"). For "Nenne" questions,
+ * whose full accepted-answers set has no single canonical entry, a handful of examples are shown
+ * instead (e.g. "z. B. Texas, Kalifornien, Florida, ...").
+ * @param {{text: string, answers: string[], tolerance?: number}} question - The question, with its
+ * accepted answers.
  * @returns {string} The canonical correct answer text.
  */
 function getCorrectAnswerDisplay(question) {
+    if (isNameQuestion(question)) {
+        const exampleCount = 5;
+        const examples = question.answers.slice(0, exampleCount).join(", ");
+        return question.answers.length > exampleCount ? `z. B. ${examples}, ...` : `z. B. ${examples}`;
+    }
+
     const correctAnswer = question.answers[0];
     if (hasNumericToleranceCheck(question)) {
         return `${correctAnswer} (+/- ${question.tolerance})`;
@@ -187,16 +279,21 @@ function buildLyricsBlankMask(answer) {
  * Builds the question text to display to clients: the stored text unchanged, except for lyrics
  * questions, which have the blank mask for their missing words appended (see
  * `buildLyricsBlankMask()`), computed from the correct answer so it never has to be stored
- * alongside the question itself.
+ * alongside the question itself, and "Nenne" questions requiring more than one answer, which get a
+ * hint to separate their answers with commas appended (see `isNameAnswerAccepted()`).
  * @param {{text: string, answers: string[]}} question - The question.
  * @returns {string} The display text sent to clients.
  */
 function getQuestionDisplayText(question) {
-    if (!isLyricsQuestion(question)) {
-        return question.text;
+    if (isLyricsQuestion(question)) {
+        return `${question.text} ${buildLyricsBlankMask(question.answers[0])}`;
     }
 
-    return `${question.text} ${buildLyricsBlankMask(question.answers[0])}`;
+    if (isNameQuestion(question) && getRequiredAnswerCount(question.text) > 1) {
+        return `${question.text} (Antworten durch Komma getrennt eingeben)`;
+    }
+
+    return question.text;
 }
 
 /**
