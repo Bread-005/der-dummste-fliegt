@@ -5,13 +5,13 @@ const connectionString = "mongodb+srv://" + process.env.DATABASE_USERNAME + ":" 
 const mongoClient = new MongoClient(connectionString);
 
 /**
- * Loads all questions from the "questions" collection of the "Misc" MongoDB database and caches
+ * Loads all questions from the "questions" collection of the "derDummsteFliegt" MongoDB database and caches
  * them in memory for the lifetime of the server process.
  * @returns {Promise<void>}
  */
 async function loadQuestions() {
     await mongoClient.connect();
-    questions = await mongoClient.db("Misc").collection("questions").find().toArray();
+    questions = await mongoClient.db("derDummsteFliegt").collection("questions").find().toArray();
 }
 
 /**
@@ -49,7 +49,7 @@ async function insertQuestions(newQuestions) {
         createdAt: new Date().toISOString(),
     }));
 
-    await mongoClient.db("Misc").collection("questions").insertMany(questionDocuments);
+    await mongoClient.db("derDummsteFliegt").collection("questions").insertMany(questionDocuments);
 }
 
 export {loadQuestions, getAllQuestions, insertQuestions};

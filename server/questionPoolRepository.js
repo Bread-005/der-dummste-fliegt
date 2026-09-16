@@ -2,7 +2,7 @@ import {MongoClient} from "mongodb";
 
 const connectionString = "mongodb+srv://" + process.env.DATABASE_USERNAME + ":" + process.env.DATABASE_PASSWORD + "@clocktowergames.hfnkicc.mongodb.net/?retryWrites=true&w=majority";
 const mongoClient = new MongoClient(connectionString);
-const questionPoolCollection = mongoClient.db("Misc").collection("unreleasedQuestions");
+const questionPoolCollection = mongoClient.db("derDummsteFliegt").collection("unreleasedQuestions");
 
 /**
  * Draws up to `count` random questions out of the "unreleasedQuestions" collection and removes them from

@@ -2,7 +2,7 @@ import {MongoClient} from "mongodb";
 
 const connectionString = "mongodb+srv://" + process.env.DATABASE_USERNAME + ":" + process.env.DATABASE_PASSWORD + "@clocktowergames.hfnkicc.mongodb.net/?retryWrites=true&w=majority";
 const mongoClient = new MongoClient(connectionString);
-const gameHistoryCollection = mongoClient.db("Misc").collection("gameHistory");
+const gameHistoryCollection = mongoClient.db("derDummsteFliegt").collection("gameHistory");
 
 /**
  * Creates a game's `gameHistory` document with all its fields already present in the desired
