@@ -70,7 +70,9 @@ es gibt keine REST-Schnittstelle.
   `mongodb`, Verbindungsdaten ausschließlich über Umgebungsvariablen). `loadQuestions()` lädt beim
   Serverstart einmalig alle Dokumente und cacht sie im Speicher (`getAllQuestions()`); es gibt
   keinen Retry-Mechanismus — schlägt der Verbindungsaufbau fehl, bleibt der Fragenpool für die
-  Prozesslebensdauer leer. Neue Fragen werden erst nach einem Neustart sichtbar.
+  Prozesslebensdauer leer. `insertQuestions()` schreibt neue Fragen sowohl in die
+  `questions`-Collection als auch direkt in den In-Memory-Cache, sodass sie ohne Serverneustart in
+  künftigen Durchgängen auftauchen können.
 - Räume und Spieler werden ausschließlich in-memory gehalten (`roomManager.js`, `Map`) — keine
   Persistenz, bei Server-Neustart (z. B. Render-Redeploy) gehen alle aktiven Räume verloren.
 - Der Fragenpool wächst automatisch nach jedem echten Spiel (`replenishQuestionsFromPool()` in
@@ -82,7 +84,10 @@ es gibt keine REST-Schnittstelle.
   lokale Skript `server/scripts/addQuestionsLocally.js` per eigenem, im Skript eingetragenem
   Connection-String in `unreleasedQuestions` einspielt und danach wieder leert.
   `plainQuestions.txt` im Repo-Root ist die ursprüngliche Rohtext-Quelle, aus der
-  `questionPool.json` geparst wurde.
+  `questionPool.json` geparst wurde. Neue Fragen in `questionPool.json` müssen vorher gegen die
+  bereits vorhandenen Fragen in `questions` und `unreleasedQuestions` geprüft werden (abrufbar über
+  `https://hobby-projects-api.onrender.com/der-dummste-fliegt/questions` bzw.
+  `.../unreleasedQuestions`), um Duplikate im Fragenpool zu vermeiden.
 - Runden-Engine lebt direkt in `server/roomManager.js` (Raum-Objekt bekommt ein `game`-Feld mit
   gemischtem Fragenpool, per `shuffleArray()` gewürfelter Zugreihenfolge, aktuellem Index,
   `answeredCounts` je `idPlayer` und einer `phase` ("question" oder "voting")). Die

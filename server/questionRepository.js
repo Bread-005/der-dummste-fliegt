@@ -32,8 +32,8 @@ function getAllQuestions() {
 
 /**
  * Inserts new question documents into the "questions" collection, stamping each with a fresh
- * `createdAt`. Does not update the in-memory cache — like any other database change, the new
- * questions only become playable after the server process is restarted (see `loadQuestions()`).
+ * `createdAt`, and appends them to the in-memory cache so they can be drawn by future rounds
+ * without a server restart.
  * @param {Array<{text: string, answers: string[], tolerance?: number}>} newQuestions - The
  *   questions to add, without `_id`/`createdAt` (both are assigned here).
  * @returns {Promise<void>}
@@ -49,7 +49,12 @@ async function insertQuestions(newQuestions) {
         createdAt: new Date().toISOString(),
     }));
 
-    await mongoClient.db("derDummsteFliegt").collection("questions").insertMany(questionDocuments);
+    const insertResult = await mongoClient.db("derDummsteFliegt").collection("questions")
+        .insertMany(questionDocuments);
+
+    questionDocuments.forEach((questionDocument, indexDocument) => {
+        questions.push({...questionDocument, _id: insertResult.insertedIds[indexDocument]});
+    });
 }
 
 export {loadQuestions, getAllQuestions, insertQuestions};
