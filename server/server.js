@@ -67,6 +67,24 @@ const socketServer = new Server(httpServer, {
 });
 
 /**
+ * Refreshes the `players` field of a room's cached game-display state in place, if it has one, so
+ * that a rejoining player is not caught up on an outdated player roster. Most game-display events
+ * carry a `players` snapshot that stays valid only until the next `room.players` change (someone
+ * leaving, rejoining, or a new player joining mid-game); once a room settles on its last event
+ * (e.g. `finaleResolved`, with nothing left to naturally refresh it), that snapshot never updates
+ * again on its own, so a departed player who rejoins the room would otherwise still see themselves
+ * listed among the dead players from the moment they left.
+ * @param {string} roomCode - The code of the room.
+ */
+function refreshCachedGameStatePlayers(roomCode) {
+    const gameState = gameDisplayStates.get(roomCode);
+
+    if (gameState && "players" in gameState) {
+        gameState.players = getPublicPlayers(roomCode);
+    }
+}
+
+/**
  * Remembers the most recently broadcast game-display event for a room, so that a player rejoining
  * mid-game (e.g. after a page reload within the disconnect grace period) can be caught up on the
  * current phase instead of only seeing the empty waiting room.
@@ -668,6 +686,8 @@ socketServer.on("connection", (socket) => {
         }
 
         const {players, settings} = joined;
+
+        refreshCachedGameStatePlayers(roomCode);
 
         socket.join(roomCode);
         socket.emit("roomJoined", {roomCode, players, settings, gameState: gameDisplayStates.get(roomCode) ?? null});
