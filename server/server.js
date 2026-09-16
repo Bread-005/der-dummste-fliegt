@@ -25,6 +25,7 @@ import {
     submitVote,
     haveAllPlayersVoted,
     resolveVotingPhase,
+    areAllAlivePlayersImmune,
     startTiebreakQuestion,
     submitTiebreakAnswer,
     haveBothTiebreakPlayersAnswered,
@@ -133,10 +134,19 @@ function handleTurnResult(roomCode, turnResult) {
 
 /**
  * Broadcasts the start of the voting phase, including every player's answer history for this
- * round (for the voting-phase tooltips), and schedules the automatic vote resolution.
+ * round (for the voting-phase tooltips), and schedules the automatic vote resolution. If every
+ * alive player answered all their questions correctly this round, nobody can be voted for at all
+ * (see `areAllAlivePlayersImmune()`) — the voting phase is skipped entirely and the round resolves
+ * straight away with nobody losing a life, instead of waiting out a voting timer nobody could ever
+ * act on.
  * @param {string} roomCode - The code of the room.
  */
 function startVotingPhase(roomCode) {
+    if (areAllAlivePlayersImmune(roomCode)) {
+        finalizeVotingResolution(roomCode, {...resolveVotingPhase(roomCode), allPlayersAnsweredCorrectly: true});
+        return;
+    }
+
     const votingDurationMs = getRoomSettings(roomCode)?.votingDurationMs;
     const payload = {
         players: getPublicPlayers(roomCode),
@@ -198,8 +208,10 @@ function finishVoting(roomCode) {
  * round (if more are left), or ends the game (if fewer than two players are left alive). Used both
  * for a directly resolved vote and for one decided by a tiebreak re-vote.
  * @param {string} roomCode - The code of the room.
- * @param {{votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>}} result -
- *   The resolved outcome, from `resolveVotingPhase()` or `resolveTiebreakVoting()`.
+ * @param {{votes: Array<{idVoter: string, idVotedFor: string}>, idPlayersLosingLife: string[], players: Array<object>,
+ *   allPlayersAnsweredCorrectly?: boolean}} result - The resolved outcome, from `resolveVotingPhase()` or
+ *   `resolveTiebreakVoting()`, optionally flagged as having skipped voting entirely because every alive player
+ *   was immune.
  */
 function finalizeVotingResolution(roomCode, result) {
     const aliveCount = countAlivePlayers(roomCode);

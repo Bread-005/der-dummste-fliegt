@@ -151,6 +151,18 @@ function hasTiebreakCandidateAnsweredCorrectly(idPlayerToCheck) {
 }
 
 /**
+ * Checks whether a player answered all their questions of the running round correctly, making them
+ * immune from this round's voting (mirrors `hasAnsweredAllCorrectlyThisRound()` in `roomManager.js`).
+ * @param {string} idPlayerToCheck - The persistent id of the player to check.
+ * @returns {boolean} True if the player has at least one answer this round and all of them are
+ *   correct.
+ */
+function hasPlayerAnsweredAllCorrectlyThisRound(idPlayerToCheck) {
+    const answerHistory = answersByPlayerThisRound[idPlayerToCheck];
+    return Boolean(answerHistory && answerHistory.length > 0 && answerHistory.every((entry) => entry.isCorrect));
+}
+
+/**
  * Splits a lyrics question's display text into the question itself and its trailing blank mask
  * (a run of space-separated underscore-only tokens appended by the server, see
  * `buildLyricsBlankMask()` in `roomManager.js`). Non-lyrics questions have no such trailing run, so
@@ -268,6 +280,9 @@ function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory, tota
  * their finale answers so far instead of the normal round's answer history. During a tiebreak
  * re-vote, the two tiebreak candidates get a golden border via `tiebreakCandidate` (styled by CSS
  * depending on whether the viewing player may click them, see `listPlayersInGame`'s click handler).
+ * During the normal voting phase, a player who answered every question this round correctly also
+ * gets `immuneFromVoting` (mirrors the tiebreak candidates' own immunity), marking them unclickable
+ * — enforced again server-side by `submitVote()`, not just here.
  * @param {HTMLElement} targetList - The list element to render into.
  * @param {Array<{idPlayer: string, name: string, isHost: boolean, lives: number, answeredCount: number}>} players -
  *   Players to render.
@@ -290,6 +305,10 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
             if (hasTiebreakCandidateAnsweredCorrectly(player.idPlayer)) {
                 itemPlayer.classList.add("immuneFromVoting");
             }
+        }
+
+        if (isVotingPhase && hasPlayerAnsweredAllCorrectlyThisRound(player.idPlayer)) {
+            itemPlayer.classList.add("immuneFromVoting");
         }
 
         const nameElement = document.createElement("span");
@@ -798,11 +817,23 @@ if (!playerName || !roomCode) {
     /**
      * Applies a "votingResolved" event's data to the UI: shows who voted for whom and who lost a
      * life, and starts the result-display timer bar. Used both for the live event and to catch a
-     * rejoining player up on an already-running result display.
-     * @param {{votes: Array<object>, idPlayersLosingLife: string[], players: Array<object>, resultDurationMs: number, resultStartedAt: number}} data -
-     *   The voting-result data.
+     * rejoining player up on an already-running result display. Also hides the answer-reveal view
+     * itself, not just the voting view `applyVotingStarted()` normally hides it from — when
+     * `allPlayersAnsweredCorrectly` skips voting entirely (see `startVotingPhase()` in `server.js`),
+     * this event follows the last question's `answerRevealed` directly, with no `votingStarted` in
+     * between to have hidden it already. `votes` is then empty and a dedicated message replaces the
+     * normal outcome text instead of claiming a tie.
+     * @param {{votes: Array<object>, idPlayersLosingLife: string[], players: Array<object>, resultDurationMs: number,
+     *   resultStartedAt: number, allPlayersAnsweredCorrectly?: boolean}} data - The voting-result data.
      */
-    function applyVotingResolved({votes, idPlayersLosingLife, players, resultDurationMs, resultStartedAt}) {
+    function applyVotingResolved({
+        votes,
+        idPlayersLosingLife,
+        players,
+        resultDurationMs,
+        resultStartedAt,
+        allPlayersAnsweredCorrectly,
+    }) {
         currentPlayers = players;
         hasGameStarted = true;
         elementRoomScreen.hidden = true;
@@ -816,6 +847,10 @@ if (!playerName || !roomCode) {
         textLyricsMask.hidden = true;
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
+        answerInputRow.hidden = true;
+        answerReveal.hidden = true;
+        textPlayerAnswer.textContent = "";
+        textCorrectAnswer.textContent = "";
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
@@ -833,7 +868,9 @@ if (!playerName || !roomCode) {
             .map((idLoser) => players.find((player) => player.idPlayer === idLoser)?.name ?? "Unbekannt")
             .join(", ");
 
-        if (idPlayersLosingLife.length === 0) {
+        if (allPlayersAnsweredCorrectly) {
+            textVotingOutcome.textContent = "Alle haben alles richtig beantwortet! Niemand verliert ein Herz.";
+        } else if (idPlayersLosingLife.length === 0) {
             textVotingOutcome.textContent = "Niemand verliert ein Herz (Unentschieden).";
         } else if (idPlayersLosingLife.length > 1) {
             textVotingOutcome.textContent = `${namesLosingLife} verlieren je ein Herz (Unentschieden).`;
@@ -1367,6 +1404,10 @@ if (!playerName || !roomCode) {
         }
 
         if (isVotingPhase) {
+            if (itemPlayer.classList.contains("immuneFromVoting")) {
+                return;
+            }
+
             hasVotedThisRound = true;
             itemPlayer.classList.add("votedByMe");
             listPlayersInGame.classList.add("voted");

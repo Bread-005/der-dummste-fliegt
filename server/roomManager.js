@@ -310,6 +310,25 @@ function hasAnsweredAllCorrectlyThisRound(room, idPlayer) {
 }
 
 /**
+ * Checks whether every currently alive player has answered all their questions of the running
+ * round correctly, meaning none of them can be voted for (see `hasAnsweredAllCorrectlyThisRound()`)
+ * and the voting phase would have no valid target at all.
+ * @param {string} roomCode - The code of the room.
+ * @returns {boolean} True if every alive player is immune from this round's voting.
+ */
+function areAllAlivePlayersImmune(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || !room.game) {
+        return false;
+    }
+
+    const alivePlayers = room.players.filter(isPlayerAlive);
+    return alivePlayers.length > 0 &&
+        alivePlayers.every((player) => hasAnsweredAllCorrectlyThisRound(room, player.idPlayer));
+}
+
+/**
  * Orders a room's players by the game's turn order once a game is running, so clients can display
  * them in the same left-to-right order in which they take their turns. Falls back to join order
  * while no game is active. A player who joins mid-game is added to `room.players` but is not part
@@ -1122,7 +1141,9 @@ function getPlayerIdForSocket(idSocket) {
 
 /**
  * Registers a player's vote for who was the dumbest this round. Ignored outside the voting phase,
- * for a voter or vote target no longer in the room or already dead, or if the voter already voted.
+ * for a voter or vote target no longer in the room or already dead, for a target who answered all
+ * their questions this round correctly (`hasAnsweredAllCorrectlyThisRound()` — immune from being
+ * voted for), or if the voter already voted.
  * @param {string} roomCode - The code of the room.
  * @param {string} idVoter - The persistent id of the voting player.
  * @param {string} idVotedFor - The persistent id of the player being voted for.
@@ -1143,6 +1164,10 @@ function submitVote(roomCode, idVoter, idVotedFor) {
     );
 
     if (!voterStillEligible || !votedForStillEligible) {
+        return false;
+    }
+
+    if (hasAnsweredAllCorrectlyThisRound(room, idVotedFor)) {
         return false;
     }
 
@@ -1167,8 +1192,11 @@ function haveAllPlayersVoted(roomCode) {
 
 /**
  * Resolves the voting round: any alive player who has not voted yet (e.g. after the voting
- * timeout) automatically votes for themselves, then the vote is tallied. Dead players neither vote
- * nor can be voted for. Depending on how many players are tied for the most votes:
+ * timeout) automatically votes for themselves, unless they answered all their questions this round
+ * correctly (`hasAnsweredAllCorrectlyThisRound()`) and are therefore immune from being voted for at
+ * all, including by this auto-vote fallback — such a player's vote then stays unset instead. Dead
+ * players neither vote nor can be voted for. Depending on how many players are tied for the most
+ * votes:
  * - exactly one: that player loses one life (down to a minimum of zero);
  * - exactly two: neither loses a life yet — the caller must start a tiebreak between them instead
  *   (see `startTiebreakQuestion()`);
@@ -1189,7 +1217,7 @@ function resolveVotingPhase(roomCode) {
     const alivePlayers = room.players.filter(isPlayerAlive);
 
     alivePlayers.forEach((player) => {
-        if (!room.game.votes[player.idPlayer]) {
+        if (!room.game.votes[player.idPlayer] && !hasAnsweredAllCorrectlyThisRound(room, player.idPlayer)) {
             room.game.votes[player.idPlayer] = player.idPlayer;
         }
     });
@@ -1999,6 +2027,7 @@ export {
     submitVote,
     haveAllPlayersVoted,
     resolveVotingPhase,
+    areAllAlivePlayersImmune,
     startTiebreakQuestion,
     submitTiebreakAnswer,
     haveBothTiebreakPlayersAnswered,
