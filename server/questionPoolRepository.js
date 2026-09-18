@@ -49,7 +49,8 @@ async function drawQuestionsFromPool(count) {
  * fresh `createdAt`. The question stays unreleased until `drawQuestionsFromPool()` happens to draw
  * it into the "questions" collection, so it is not checked for duplicates against the active pool
  * here — see the manual duplicate check described for `questionPool.json` in CLAUDE.md.
- * @param {{text: string, answers: string[], difficulty: number}} question - The question to add.
+ * @param {{text: string, answers: string[], difficulty: number, creator: string}} question - The
+ *   question to add.
  * @returns {Promise<void>}
  */
 async function insertQuestionIntoPool(question) {
@@ -57,4 +58,17 @@ async function insertQuestionIntoPool(question) {
     await questionPoolCollection.insertOne({...question, createdAt: new Date()});
 }
 
-export {drawQuestionsFromPool, insertQuestionIntoPool};
+/**
+ * Counts how many questions in the still-unreleased "unreleasedQuestions" collection carry the
+ * given `creator`. Combined with `countQuestionsCreatedByPlayer()` in `questionRepository.js`,
+ * this gives the total number of questions a player has ever submitted, regardless of whether
+ * they have since been drawn into active use.
+ * @param {string} creator - The submitting player's name.
+ * @returns {Promise<number>} The number of matching questions.
+ */
+async function countPoolQuestionsCreatedByPlayer(creator) {
+    await mongoClient.connect();
+    return questionPoolCollection.countDocuments({creator});
+}
+
+export {drawQuestionsFromPool, insertQuestionIntoPool, countPoolQuestionsCreatedByPlayer};

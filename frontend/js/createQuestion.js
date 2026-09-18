@@ -1,6 +1,8 @@
 import {connectToServer} from "./socketClient.js";
+import {readLoggedInName} from "./loginState.js";
 
 const socket = connectToServer();
+const playerName = readLoggedInName();
 
 const inputQuestionText = document.getElementById("inputQuestionText");
 const inputDifficulty = document.getElementById("inputDifficulty");
@@ -9,6 +11,8 @@ const textCreateQuestionMessage = document.getElementById("textCreateQuestionMes
 const buttonBackToLobby = document.getElementById("buttonBackToLobby");
 const buttonSubmitQuestion = document.getElementById("buttonSubmitQuestion");
 const buttonAddAnswer = document.getElementById("buttonAddAnswer");
+
+let remainingAllowance = 0;
 
 /**
  * Adds a new correct-answer input row (a minus button next to a text input) to
@@ -67,6 +71,20 @@ function resetAnswerRows() {
     addAnswerRow();
 }
 
+/**
+ * Reflects how many more custom questions the player may still submit on the submit button: red
+ * and clickable while an allowance is left, gray with a "no entry" cursor once it is used up. The
+ * tooltip always shows the current games-played/questions-created counts, on hover in either state.
+ * @param {{gamesPlayed: number, questionsCreated: number, remainingAllowance: number}} eligibility -
+ *   The player's current question-creation eligibility, as sent by the server.
+ */
+function applyEligibility(eligibility) {
+    remainingAllowance = eligibility.remainingAllowance;
+    buttonSubmitQuestion.classList.toggle("buttonSubmitQuestionDisabled", remainingAllowance <= 0);
+    buttonSubmitQuestion.dataset.tooltip =
+        `Gespielte Spiele: ${eligibility.gamesPlayed}\nErstellte Fragen: ${eligibility.questionsCreated}`;
+}
+
 buttonAddAnswer.addEventListener("click", () => {
     addAnswerRow();
 });
@@ -76,6 +94,10 @@ buttonBackToLobby.addEventListener("click", () => {
 });
 
 buttonSubmitQuestion.addEventListener("click", () => {
+    if (remainingAllowance <= 0) {
+        return;
+    }
+
     const questionText = inputQuestionText.value.trim();
     const correctAnswers = readCorrectAnswers();
     const difficulty = Number(inputDifficulty.value);
@@ -85,7 +107,7 @@ buttonSubmitQuestion.addEventListener("click", () => {
         return;
     }
 
-    socket.emit("submitQuestion", {questionText, correctAnswers, difficulty});
+    socket.emit("submitQuestion", {playerName, questionText, correctAnswers, difficulty});
 });
 
 socket.on("questionSubmitted", () => {
@@ -95,8 +117,16 @@ socket.on("questionSubmitted", () => {
     resetAnswerRows();
 });
 
+socket.on("questionCreationEligibility", (eligibility) => {
+    applyEligibility(eligibility);
+});
+
 socket.on("errorMessage", ({message}) => {
     textCreateQuestionMessage.textContent = message;
+});
+
+socket.on("connect", () => {
+    socket.emit("checkQuestionCreationEligibility", {playerName});
 });
 
 addAnswerRow();

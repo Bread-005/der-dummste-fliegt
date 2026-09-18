@@ -68,4 +68,33 @@ async function finalizeGameHistory(idGame, endedAt) {
     await gameHistoryCollection.updateOne({idGame}, {$set: {endedAt}});
 }
 
-export {createGameHistoryDocument, saveRoundsSnapshot, savePlayersSnapshot, finalizeGameHistory};
+/**
+ * Counts how many finished games a player took part in from the very first round, used to cap
+ * how many custom questions that player may submit (see `countQuestionsCreatedByPlayer()` in
+ * `questionRepository.js`/`questionPoolRepository.js`). A player only counts as having taken part
+ * in the first round if they show up among that round's recorded answers — someone who joined
+ * mid-game as a spectator has an entry in `players` but none in `rounds[0].answers`.
+ * @param {string} playerName - The player's name, as recorded in `rounds[].answers[].playerName`.
+ * @returns {Promise<number>} The number of finished games with that player in round 1.
+ */
+async function countFinishedGamesWithPlayerInFirstRound(playerName) {
+    await mongoClient.connect();
+    return gameHistoryCollection.countDocuments({
+        endedAt: {$ne: null},
+        rounds: {
+            $elemMatch: {
+                roundNumber: 1,
+                type: "question",
+                answers: {$elemMatch: {playerName}},
+            },
+        },
+    });
+}
+
+export {
+    createGameHistoryDocument,
+    saveRoundsSnapshot,
+    savePlayersSnapshot,
+    finalizeGameHistory,
+    countFinishedGamesWithPlayerInFirstRound,
+};

@@ -46,11 +46,30 @@ import {
     resolveFinaleQuestion,
     advanceFinaleQuestion,
 } from "./roomManager.js";
-import {loadQuestions, getAllQuestions} from "./questionRepository.js";
-import {insertQuestionIntoPool} from "./questionPoolRepository.js";
+import {loadQuestions, getAllQuestions, countQuestionsCreatedByPlayer} from "./questionRepository.js";
+import {insertQuestionIntoPool, countPoolQuestionsCreatedByPlayer} from "./questionPoolRepository.js";
+import {countFinishedGamesWithPlayerInFirstRound} from "./gameRepository.js";
 
 const MIN_QUESTION_DIFFICULTY = 1;
 const MAX_QUESTION_DIFFICULTY = 10;
+
+/**
+ * Determines how many custom questions `playerName` may still submit: one per finished game they
+ * took part in from round 1, minus however many questions they have already submitted (in either
+ * the active "questions" collection or the still-unreleased "unreleasedQuestions" collection).
+ * @param {string} playerName - The submitting player's name.
+ * @returns {Promise<{gamesPlayed: number, questionsCreated: number, remainingAllowance: number}>}
+ */
+async function getQuestionCreationEligibility(playerName) {
+    const [gamesPlayed, questionsCreatedActive, questionsCreatedInPool] = await Promise.all([
+        countFinishedGamesWithPlayerInFirstRound(playerName),
+        countQuestionsCreatedByPlayer(playerName),
+        countPoolQuestionsCreatedByPlayer(playerName),
+    ]);
+    const questionsCreated = questionsCreatedActive + questionsCreatedInPool;
+
+    return {gamesPlayed, questionsCreated, remainingAllowance: Math.max(0, gamesPlayed - questionsCreated)};
+}
 
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
@@ -669,7 +688,12 @@ socketServer.on("connection", (socket) => {
         socket.emit("timeSyncResponse", {clientSentAt, serverTime: Date.now()});
     });
 
-    socket.on("submitQuestion", async ({questionText, correctAnswers, difficulty}) => {
+    socket.on("checkQuestionCreationEligibility", async ({playerName}) => {
+        const eligibility = await getQuestionCreationEligibility(playerName);
+        socket.emit("questionCreationEligibility", eligibility);
+    });
+
+    socket.on("submitQuestion", async ({playerName, questionText, correctAnswers, difficulty}) => {
         const trimmedQuestionText = questionText.trim();
         const trimmedCorrectAnswers = correctAnswers.map((correctAnswer) => correctAnswer.trim())
             .filter((correctAnswer) => correctAnswer !== "");
@@ -684,8 +708,22 @@ socketServer.on("connection", (socket) => {
             return;
         }
 
-        await insertQuestionIntoPool({text: trimmedQuestionText, answers: trimmedCorrectAnswers, difficulty});
+        const eligibility = await getQuestionCreationEligibility(playerName);
+
+        if (eligibility.remainingAllowance <= 0) {
+            socket.emit("errorMessage", {message: "Du hast keine Fragen mehr übrig, die du einreichen kannst."});
+            socket.emit("questionCreationEligibility", eligibility);
+            return;
+        }
+
+        await insertQuestionIntoPool({
+            text: trimmedQuestionText,
+            answers: trimmedCorrectAnswers,
+            difficulty,
+            creator: playerName,
+        });
         socket.emit("questionSubmitted");
+        socket.emit("questionCreationEligibility", await getQuestionCreationEligibility(playerName));
     });
 
     socket.on("createRoom", ({playerName, idPlayer}) => {

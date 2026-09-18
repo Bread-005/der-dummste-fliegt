@@ -61,4 +61,14 @@ async function insertQuestions(newQuestions) {
     });
 }
 
-export {loadQuestions, getAllQuestions, insertQuestions};
+/**
+ * Counts how many questions in the active "questions" collection carry the given `creator`.
+ * @param {string} creator - The submitting player's name, as stored in `insertQuestionIntoPool()`.
+ * @returns {Promise<number>} The number of matching questions.
+ */
+async function countQuestionsCreatedByPlayer(creator) {
+    await mongoClient.connect();
+    return mongoClient.db("derDummsteFliegt").collection("questions").countDocuments({creator});
+}
+
+export {loadQuestions, getAllQuestions, insertQuestions, countQuestionsCreatedByPlayer};

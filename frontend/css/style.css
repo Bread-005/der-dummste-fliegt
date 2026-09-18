@@ -200,6 +200,7 @@ button:hover {
     border-radius: 6px;
     border: 1px solid #444;
     resize: vertical;
+    max-height: 200px;
 }
 
 #createQuestionScreen h1 {
@@ -218,6 +219,19 @@ button:hover {
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+#buttonSubmitQuestion {
+    position: relative;
+}
+
+#buttonSubmitQuestion.buttonSubmitQuestionDisabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+#buttonSubmitQuestion.buttonSubmitQuestionDisabled:hover {
+    background-color: #555;
 }
 
 .answerRow {
@@ -581,7 +595,8 @@ button:hover {
     gap: 4px;
 }
 
-.answeredDot[data-tooltip]:hover::after {
+.answeredDot[data-tooltip]:hover::after,
+#buttonSubmitQuestion[data-tooltip]:hover::after {
     content: attr(data-tooltip);
     position: absolute;
     bottom: 140%;
