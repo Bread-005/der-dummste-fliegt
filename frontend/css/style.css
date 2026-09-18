@@ -45,6 +45,35 @@ button:hover {
     background-color: #c1121f;
 }
 
+#loginStatus {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-size: 14px;
+    z-index: 10;
+}
+
+#loginStatus[hidden] {
+    display: none;
+}
+
+#buttonLogout {
+    padding: 4px 10px;
+    font-size: 13px;
+    background-color: transparent;
+    color: #f0f0f0;
+    text-decoration: underline;
+}
+
+#buttonLogout:hover {
+    background-color: transparent;
+    color: #cccccc;
+}
+
 #roomScreen {
     align-items: center;
 }

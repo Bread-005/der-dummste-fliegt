@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="frontend/css/style.css">
 </head>
 <body>
+    <div id="loginStatus" hidden>
+        <span id="textLoggedInName"></span>
+        <button id="buttonLogout">Abmelden</button>
+    </div>
+
     <main id="app">
         <section id="connectingScreen">
             <div class="spinner"></div>
@@ -30,5 +35,6 @@
 
     <script src="https://der-dummste-fliegt.onrender.com/socket.io/socket.io.js"></script>
     <script type="module" src="frontend/js/main.js"></script>
+    <script type="module" src="frontend/js/loginStatus.js"></script>
 </body>
 </html>
