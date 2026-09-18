@@ -44,4 +44,17 @@ async function drawQuestionsFromPool(count) {
     return drawnQuestions;
 }
 
-export {drawQuestionsFromPool};
+/**
+ * Inserts a single question document into the "unreleasedQuestions" collection, stamped with a
+ * fresh `createdAt`. The question stays unreleased until `drawQuestionsFromPool()` happens to draw
+ * it into the "questions" collection, so it is not checked for duplicates against the active pool
+ * here — see the manual duplicate check described for `questionPool.json` in CLAUDE.md.
+ * @param {{text: string, answers: string[], difficulty: number}} question - The question to add.
+ * @returns {Promise<void>}
+ */
+async function insertQuestionIntoPool(question) {
+    await mongoClient.connect();
+    await questionPoolCollection.insertOne({...question, createdAt: new Date()});
+}
+
+export {drawQuestionsFromPool, insertQuestionIntoPool};

@@ -47,6 +47,10 @@ import {
     advanceFinaleQuestion,
 } from "./roomManager.js";
 import {loadQuestions, getAllQuestions} from "./questionRepository.js";
+import {insertQuestionIntoPool} from "./questionPoolRepository.js";
+
+const MIN_QUESTION_DIFFICULTY = 1;
+const MAX_QUESTION_DIFFICULTY = 10;
 
 const TURN_DURATION_MS = 30000;
 const REVEAL_DURATION_MS = 5000;
@@ -663,6 +667,24 @@ function handlePlayerRemovedDuringGame(roomCode, removalEffect) {
 socketServer.on("connection", (socket) => {
     socket.on("timeSync", ({clientSentAt}) => {
         socket.emit("timeSyncResponse", {clientSentAt, serverTime: Date.now()});
+    });
+
+    socket.on("submitQuestion", async ({questionText, correctAnswer, difficulty}) => {
+        const trimmedQuestionText = questionText.trim();
+        const trimmedCorrectAnswer = correctAnswer.trim();
+
+        if (trimmedQuestionText === "" || trimmedCorrectAnswer === "") {
+            socket.emit("errorMessage", {message: "Frage und richtige Antwort dürfen nicht leer sein."});
+            return;
+        }
+
+        if (!Number.isInteger(difficulty) || difficulty < MIN_QUESTION_DIFFICULTY || difficulty > MAX_QUESTION_DIFFICULTY) {
+            socket.emit("errorMessage", {message: `Schwierigkeit muss zwischen ${MIN_QUESTION_DIFFICULTY} und ${MAX_QUESTION_DIFFICULTY} liegen.`});
+            return;
+        }
+
+        await insertQuestionIntoPool({text: trimmedQuestionText, answers: [trimmedCorrectAnswer], difficulty});
+        socket.emit("questionSubmitted");
     });
 
     socket.on("createRoom", ({playerName, idPlayer}) => {

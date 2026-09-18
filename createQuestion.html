@@ -1,0 +1,38 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Der Dümmste Fliegt</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐦</text></svg>">
+    <link rel="stylesheet" href="frontend/css/style.css">
+</head>
+<body>
+    <main id="app">
+        <section id="createQuestionScreen">
+            <h1>Erstelle eigene Frage</h1>
+            <div class="fieldColumn">
+                <label for="inputQuestionText">Frage</label>
+                <textarea id="inputQuestionText" maxlength="300" rows="3"></textarea>
+            </div>
+            <div class="fieldColumn">
+                <label for="inputCorrectAnswer">Richtige Antwort</label>
+                <input id="inputCorrectAnswer" type="text" maxlength="100">
+            </div>
+            <div class="fieldColumn">
+                <label for="inputDifficulty">Schwierigkeit (1-10)</label>
+                <input id="inputDifficulty" type="number" min="1" max="10" value="5">
+            </div>
+            <p id="textCreateQuestionMessage"></p>
+            <div class="rowButtons">
+                <button id="buttonBackToLobby">Zurück</button>
+                <button id="buttonSubmitQuestion">Frage einreichen</button>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://der-dummste-fliegt.onrender.com/socket.io/socket.io.js"></script>
+    <script type="module" src="frontend/js/createQuestion.js"></script>
+</body>
+</html>
