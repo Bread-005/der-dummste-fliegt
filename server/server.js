@@ -669,12 +669,13 @@ socketServer.on("connection", (socket) => {
         socket.emit("timeSyncResponse", {clientSentAt, serverTime: Date.now()});
     });
 
-    socket.on("submitQuestion", async ({questionText, correctAnswer, difficulty}) => {
+    socket.on("submitQuestion", async ({questionText, correctAnswers, difficulty}) => {
         const trimmedQuestionText = questionText.trim();
-        const trimmedCorrectAnswer = correctAnswer.trim();
+        const trimmedCorrectAnswers = correctAnswers.map((correctAnswer) => correctAnswer.trim())
+            .filter((correctAnswer) => correctAnswer !== "");
 
-        if (trimmedQuestionText === "" || trimmedCorrectAnswer === "") {
-            socket.emit("errorMessage", {message: "Frage und richtige Antwort dürfen nicht leer sein."});
+        if (trimmedQuestionText === "" || trimmedCorrectAnswers.length === 0) {
+            socket.emit("errorMessage", {message: "Frage und mindestens eine richtige Antwort dürfen nicht leer sein."});
             return;
         }
 
@@ -683,7 +684,7 @@ socketServer.on("connection", (socket) => {
             return;
         }
 
-        await insertQuestionIntoPool({text: trimmedQuestionText, answers: [trimmedCorrectAnswer], difficulty});
+        await insertQuestionIntoPool({text: trimmedQuestionText, answers: trimmedCorrectAnswers, difficulty});
         socket.emit("questionSubmitted");
     });
 

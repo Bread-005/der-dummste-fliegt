@@ -9,26 +9,30 @@
     <link rel="stylesheet" href="frontend/css/style.css">
 </head>
 <body>
+    <button id="buttonBackToLobby" class="buttonBackToLobby">Zurück</button>
+
     <main id="app">
         <section id="createQuestionScreen">
             <h1>Erstelle eigene Frage</h1>
-            <div class="fieldColumn">
-                <label for="inputQuestionText">Frage</label>
-                <textarea id="inputQuestionText" maxlength="300" rows="3"></textarea>
-            </div>
-            <div class="fieldColumn">
-                <label for="inputCorrectAnswer">Richtige Antwort</label>
-                <input id="inputCorrectAnswer" type="text" maxlength="100">
-            </div>
-            <div class="fieldColumn">
-                <label for="inputDifficulty">Schwierigkeit (1-10)</label>
-                <input id="inputDifficulty" type="number" min="1" max="10" value="5">
+            <div id="createQuestionGrid">
+                <div id="createQuestionColumnLeft">
+                    <div class="fieldColumn">
+                        <label for="inputQuestionText">Frage</label>
+                        <textarea id="inputQuestionText" maxlength="300" rows="3"></textarea>
+                    </div>
+                    <div class="fieldColumn">
+                        <label for="inputDifficulty">Schwierigkeit (1-10)</label>
+                        <input id="inputDifficulty" type="number" min="1" max="10" value="5">
+                    </div>
+                    <button id="buttonSubmitQuestion">Frage einreichen</button>
+                </div>
+                <div id="createQuestionColumnRight">
+                    <label>Richtige Antwort(en)</label>
+                    <div id="listCorrectAnswers"></div>
+                    <button type="button" id="buttonAddAnswer" class="buttonAddAnswer">+</button>
+                </div>
             </div>
             <p id="textCreateQuestionMessage"></p>
-            <div class="rowButtons">
-                <button id="buttonBackToLobby">Zurück</button>
-                <button id="buttonSubmitQuestion">Frage einreichen</button>
-            </div>
         </section>
     </main>
 

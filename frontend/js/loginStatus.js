@@ -1,4 +1,5 @@
 const LOGIN_PAGE_STORAGE_KEY = "login-page";
+const LOGIN_PAGE_URL = "https://bread-005.github.io/login-page/index.html";
 
 /**
  * Reads the logged-in user's name from the shared "login-page" localStorage entry written by
@@ -52,7 +53,7 @@ function renderLoginStatus() {
 
 document.getElementById("buttonLogout").addEventListener("click", () => {
     clearLoggedInUser();
-    renderLoginStatus();
+    window.location.href = LOGIN_PAGE_URL;
 });
 
 document.getElementById("buttonCreateQuestions").addEventListener("click", () => {

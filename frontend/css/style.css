@@ -206,6 +206,58 @@ button:hover {
     text-align: center;
 }
 
+#createQuestionGrid {
+    display: flex;
+    gap: 16px;
+}
+
+#createQuestionColumnLeft,
+#createQuestionColumnRight {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.answerRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.answerRow input {
+    flex: 1;
+    min-width: 0;
+}
+
+.buttonRemoveAnswer {
+    padding: 4px 12px;
+    font-size: 16px;
+    background-color: #555;
+}
+
+.buttonRemoveAnswer:hover {
+    background-color: #444;
+}
+
+.buttonRemoveAnswer:disabled {
+    background-color: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.buttonAddAnswer {
+    align-self: flex-start;
+    padding: 4px 14px;
+    font-size: 16px;
+    background-color: #2e9e44;
+}
+
+.buttonAddAnswer:hover {
+    background-color: #237a34;
+}
+
 .rowInputs input {
     flex: 1;
     min-width: 0;
@@ -232,6 +284,17 @@ button:hover {
 }
 
 .buttonLeaveRoom:hover {
+    background-color: #333;
+}
+
+.buttonBackToLobby {
+    position: fixed;
+    left: 24px;
+    top: 24px;
+    background-color: #444;
+}
+
+.buttonBackToLobby:hover {
     background-color: #333;
 }
 
