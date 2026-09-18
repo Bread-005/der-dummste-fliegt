@@ -12,9 +12,9 @@ const questionPoolCollection = mongoClient.db("derDummsteFliegt").collection("un
  * that id. Returns fewer than `count` questions (down to none) if the pool runs out.
  * @param {number} count - The maximum number of questions to draw.
  * @returns {Promise<Array<{text: string, answers: string[], tolerance?: number, difficulty: number}>>}
- *   The drawn questions, without their `_id`. `difficulty` (1-10) only guides curation of the pool
- *   and must be stripped before a question is inserted into the "questions" collection (see
- *   `replenishQuestionsFromPool()` in `questionPool.js`).
+ *   The drawn questions, without their `_id`. `difficulty` (1-10) is carried over as-is into the
+ *   "questions" collection (see `replenishQuestionsFromPool()` in `questionPool.js`) and only guides
+ *   curation of the pool — it plays no role once a question is in active use.
  */
 async function drawQuestionsFromPool(count) {
     await mongoClient.connect();
