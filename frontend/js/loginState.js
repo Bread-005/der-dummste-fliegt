@@ -1,6 +1,6 @@
 const LOGIN_PAGE_STORAGE_KEY = "login-page";
 
-export {LOGIN_PAGE_STORAGE_KEY, readLoggedInName, clearLoggedInUser};
+export {LOGIN_PAGE_STORAGE_KEY, readLoggedInName};
 
 /**
  * Reads the logged-in user's name from the shared "login-page" localStorage entry written by
@@ -21,12 +21,4 @@ function readLoggedInName() {
     } catch {
         return "";
     }
-}
-
-/**
- * Clears the shared "login-page" localStorage entry, logging the user out for both this
- * project and the login-page project.
- */
-function clearLoggedInUser() {
-    localStorage.setItem(LOGIN_PAGE_STORAGE_KEY, JSON.stringify({name: "", token: "", message: ""}));
 }

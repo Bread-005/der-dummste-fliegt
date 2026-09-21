@@ -1,4 +1,4 @@
-import {readLoggedInName, clearLoggedInUser} from "./loginState.js";
+import {readLoggedInName} from "./loginState.js";
 
 const LOGIN_PAGE_URL = "https://bread-005.github.io/login-page/index.html";
 
@@ -31,7 +31,6 @@ function renderLoginStatus() {
 }
 
 document.getElementById("buttonLogout").addEventListener("click", () => {
-    clearLoggedInUser();
     window.location.href = LOGIN_PAGE_URL;
 });
 
