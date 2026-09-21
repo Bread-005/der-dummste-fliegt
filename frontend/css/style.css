@@ -192,9 +192,16 @@ button:hover {
     text-align: center;
 }
 
-.rowInputs,
-.rowButtons {
+#lobbyActionsGrid {
     display: flex;
+    gap: 12px;
+}
+
+.lobbyColumn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
     gap: 12px;
 }
 
@@ -281,16 +288,6 @@ button:hover {
 
 .buttonAddAnswer:hover {
     background-color: #237a34;
-}
-
-.rowInputs input {
-    flex: 1;
-    min-width: 0;
-}
-
-.rowButtons button {
-    flex: 1;
-    min-width: 0;
 }
 
 #lobbyScreen button {

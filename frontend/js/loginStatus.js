@@ -13,11 +13,13 @@ function renderLoginStatus() {
     const textLoggedInName = document.getElementById("textLoggedInName");
     const buttonCreateQuestions = document.getElementById("buttonCreateQuestions");
     const buttonLogin = document.getElementById("buttonLogin");
+    const inputPlayerName = document.getElementById("inputPlayerName");
 
     if (!loggedInName) {
         sectionLoginStatus.hidden = true;
         buttonCreateQuestions.hidden = true;
         buttonLogin.hidden = false;
+        inputPlayerName.hidden = false;
         return;
     }
 
@@ -25,6 +27,7 @@ function renderLoginStatus() {
     sectionLoginStatus.hidden = false;
     buttonCreateQuestions.hidden = false;
     buttonLogin.hidden = true;
+    inputPlayerName.hidden = true;
 }
 
 document.getElementById("buttonLogout").addEventListener("click", () => {

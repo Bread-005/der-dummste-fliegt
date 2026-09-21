@@ -1,5 +1,6 @@
 import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
+import {readLoggedInName} from "./loginState.js";
 
 const connectingScreen = document.getElementById("connectingScreen");
 const inputPlayerName = document.getElementById("inputPlayerName");
@@ -28,23 +29,36 @@ function readRoomCodeFromUrl() {
     return roomCode ? roomCode.toUpperCase() : null;
 }
 
+/**
+ * Reads the player name to use for creating/joining a room: the logged-in user's name when
+ * logged in (the name input is hidden in that case), otherwise the typed name input value.
+ * @returns {string} The trimmed player name.
+ */
+function resolvePlayerName() {
+    const loggedInName = readLoggedInName();
+    return loggedInName ? loggedInName : inputPlayerName.value.trim();
+}
+
 const roomCodeFromUrl = readRoomCodeFromUrl();
 
 if (roomCodeFromUrl) {
     inputRoomCode.value = roomCodeFromUrl;
     inputRoomCode.hidden = true;
     buttonCreateRoom.hidden = true;
-    inputPlayerName.focus();
 
-    inputPlayerName.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            buttonJoinRoom.click();
-        }
-    });
+    if (!readLoggedInName()) {
+        inputPlayerName.focus();
+
+        inputPlayerName.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                buttonJoinRoom.click();
+            }
+        });
+    }
 }
 
 buttonCreateRoom.addEventListener("click", () => {
-    const playerName = inputPlayerName.value.trim();
+    const playerName = resolvePlayerName();
 
     if (playerName === "") {
         return;
@@ -55,7 +69,7 @@ buttonCreateRoom.addEventListener("click", () => {
 });
 
 buttonJoinRoom.addEventListener("click", () => {
-    const playerName = inputPlayerName.value.trim();
+    const playerName = resolvePlayerName();
     const roomCode = inputRoomCode.value.trim().toUpperCase();
 
     if (playerName === "" || roomCode === "") {

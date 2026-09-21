@@ -24,14 +24,16 @@
 
         <section id="lobbyScreen">
             <h1>Der Dümmste Fliegt</h1>
-            <div class="rowInputs">
-                <input id="inputPlayerName" type="text" placeholder="Name eingeben" maxlength="20">
-                <input id="inputRoomCode" type="text" placeholder="Raumcode (optional)" maxlength="6">
-            </div>
-            <div class="rowButtons">
-                <button id="buttonCreateRoom">Raum erstellen</button>
-                <button id="buttonJoinRoom">Raum beitreten</button>
-                <button id="buttonCreateQuestions" hidden>Erstelle eigene Fragen</button>
+            <input id="inputPlayerName" type="text" placeholder="Name eingeben" maxlength="20">
+            <div id="lobbyActionsGrid">
+                <div class="lobbyColumn">
+                    <button id="buttonCreateRoom">Raum erstellen</button>
+                    <button id="buttonCreateQuestions" hidden>Erstelle eigene Fragen</button>
+                </div>
+                <div class="lobbyColumn">
+                    <input id="inputRoomCode" type="text" placeholder="Raumcode (optional)" maxlength="6">
+                    <button id="buttonJoinRoom">Raum beitreten</button>
+                </div>
             </div>
         </section>
     </main>
