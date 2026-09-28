@@ -48,13 +48,19 @@ const textVotingHint = document.getElementById("textVotingHint");
 const textTiebreakVotingHint = document.getElementById("textTiebreakVotingHint");
 const textFinaleProgress = document.getElementById("textFinaleProgress");
 const answerInputRow = document.getElementById("answerInputRow");
+const buttonToggleSettings = document.getElementById("buttonToggleSettings");
+const playerSettingsPanel = document.getElementById("playerSettingsPanel");
+const checkboxAutoReadQuestions = document.getElementById("checkboxAutoReadQuestions");
 const inputAnswer = document.getElementById("inputAnswer");
+const buttonMicAnswer = document.getElementById("buttonMicAnswer");
 const buttonSubmitAnswer = document.getElementById("buttonSubmitAnswer");
 const tiebreakAnswerRow = document.getElementById("tiebreakAnswerRow");
 const textTiebreakNameLeft = document.getElementById("textTiebreakNameLeft");
 const textTiebreakNameRight = document.getElementById("textTiebreakNameRight");
 const inputTiebreakAnswerLeft = document.getElementById("inputTiebreakAnswerLeft");
 const inputTiebreakAnswerRight = document.getElementById("inputTiebreakAnswerRight");
+const buttonMicTiebreakAnswerLeft = document.getElementById("buttonMicTiebreakAnswerLeft");
+const buttonMicTiebreakAnswerRight = document.getElementById("buttonMicTiebreakAnswerRight");
 const buttonSubmitTiebreakAnswerLeft = document.getElementById("buttonSubmitTiebreakAnswerLeft");
 const buttonSubmitTiebreakAnswerRight = document.getElementById("buttonSubmitTiebreakAnswerRight");
 const tiebreakReveal = document.getElementById("tiebreakReveal");
@@ -68,6 +74,7 @@ const votingResult = document.getElementById("votingResult");
 const listVotes = document.getElementById("listVotes");
 const textVotingOutcome = document.getElementById("textVotingOutcome");
 const listPlayersInGame = document.getElementById("listPlayersInGame");
+const hoverTooltip = document.getElementById("hoverTooltip");
 const deadPlayersBox = document.getElementById("deadPlayersBox");
 const listDeadPlayers = document.getElementById("listDeadPlayers");
 const finaleAnswerRow = document.getElementById("finaleAnswerRow");
@@ -75,6 +82,8 @@ const textFinaleNameLeft = document.getElementById("textFinaleNameLeft");
 const textFinaleNameRight = document.getElementById("textFinaleNameRight");
 const inputFinaleAnswerLeft = document.getElementById("inputFinaleAnswerLeft");
 const inputFinaleAnswerRight = document.getElementById("inputFinaleAnswerRight");
+const buttonMicFinaleAnswerLeft = document.getElementById("buttonMicFinaleAnswerLeft");
+const buttonMicFinaleAnswerRight = document.getElementById("buttonMicFinaleAnswerRight");
 const buttonSubmitFinaleAnswerLeft = document.getElementById("buttonSubmitFinaleAnswerLeft");
 const buttonSubmitFinaleAnswerRight = document.getElementById("buttonSubmitFinaleAnswerRight");
 const finaleReveal = document.getElementById("finaleReveal");
@@ -206,6 +215,185 @@ function renderQuestionText(text) {
     textLyricsMask.hidden = maskText.length === 0;
 }
 
+const PLAYER_SETTINGS_STORAGE_KEY = "playerSettings";
+
+/**
+ * Reads the shared per-player settings object from `localStorage`. All personal settings (not
+ * just read-aloud) live together under one key so future ones don't each need their own storage
+ * plumbing.
+ * @returns {object} The stored settings, or `{}` if none are stored yet or storage is unavailable.
+ */
+function loadPlayerSettings() {
+    try {
+        return JSON.parse(localStorage.getItem(PLAYER_SETTINGS_STORAGE_KEY)) ?? {};
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Merges the given fields into the stored per-player settings object.
+ * @param {object} partialSettings - The fields to merge in.
+ */
+function savePlayerSettings(partialSettings) {
+    try {
+        localStorage.setItem(
+            PLAYER_SETTINGS_STORAGE_KEY,
+            JSON.stringify({...loadPlayerSettings(), ...partialSettings}),
+        );
+    } catch {
+        // Storage unavailable (e.g. private browsing); the setting simply won't persist.
+    }
+}
+
+const QUESTION_VOICE_PITCH = 0.9;
+const QUESTION_VOICE_VOLUME = 1;
+const QUESTION_VOICE_RATE = 1.1;
+
+// Known male German voice names across browsers/operating systems (Safari/macOS, Edge/Windows,
+// Firefox/Windows) — matched case-insensitively since Web Speech API exposes different voices
+// depending on the platform, and most Chrome installs only offer a single female "Google
+// Deutsch" voice for de-DE with no male alternative at all.
+const MALE_GERMAN_VOICE_NAMES = ["yannick", "conrad", "klaus", "stefan", "markus"];
+
+/**
+ * Picks a male German voice for `speakQuestionText()` by matching against known voice names,
+ * falling back to the first available `de-DE` voice if none of them are installed on the
+ * player's device (e.g. most Chrome installs, which only expose a female voice for de-DE).
+ * @returns {SpeechSynthesisVoice|null} The voice to use, or `null` if none is available yet.
+ */
+function selectQuestionVoice() {
+    const voices = speechSynthesis.getVoices();
+    console.log(voices)
+    const preferredVoice = voices.find((voice) =>
+        MALE_GERMAN_VOICE_NAMES.some((maleVoiceName) =>
+            voice.name.toLowerCase().includes(maleVoiceName)));
+    if (preferredVoice) {
+        return preferredVoice;
+    }
+
+    return voices.find((voice) => voice.lang === "de-DE") ?? null;
+}
+
+/**
+ * Reads the currently displayed question text aloud via the browser's speech synthesis, so
+ * players who prefer listening over reading don't have to rely on the on-screen text.
+ */
+function speakQuestionText() {
+    if (!("speechSynthesis" in window) || textQuestion.textContent === "") {
+        return;
+    }
+
+    const speech = new SpeechSynthesisUtterance(textQuestion.textContent);
+    speech.lang = "de-DE";
+    speech.voice = selectQuestionVoice();
+    speech.pitch = QUESTION_VOICE_PITCH;
+    speech.volume = QUESTION_VOICE_VOLUME;
+    speech.rate = QUESTION_VOICE_RATE;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(speech);
+}
+
+/**
+ * Reads the currently displayed question aloud if the player has enabled "Fragen automatisch
+ * vorlesen" in their personal settings. Called for every question — including the player's own
+ * turn and other players' turns — since the setting covers all of them alike.
+ */
+function speakQuestionTextIfAutoReadEnabled() {
+    if (loadPlayerSettings().autoReadQuestions) {
+        speakQuestionText();
+    }
+}
+
+const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+const speechRecognition = SpeechRecognitionConstructor ? new SpeechRecognitionConstructor() : null;
+
+if (speechRecognition) {
+    speechRecognition.lang = "de-DE";
+    speechRecognition.continuous = false;
+    speechRecognition.interimResults = false;
+}
+
+let activeSpeechInputElement = null;
+
+/**
+ * Starts the browser's speech recognition for the given answer field, replacing whatever text it
+ * already contains once the player finishes speaking. Reuses a single `SpeechRecognition`
+ * instance across all answer fields since only one recognition session can run at a time anyway;
+ * `activeSpeechInputElement` tracks which field the next result belongs to.
+ * @param {HTMLInputElement} inputElement - The answer field to fill with the recognized text.
+ */
+function startSpeechInputFor(inputElement) {
+    if (!speechRecognition || inputElement.disabled) {
+        return;
+    }
+
+    activeSpeechInputElement = inputElement;
+
+    try {
+        speechRecognition.start();
+    } catch {
+        // Recognition is already running (e.g. a rapid double-click on the mic button); ignore.
+    }
+}
+
+if (speechRecognition) {
+    speechRecognition.addEventListener("result", (event) => {
+        if (activeSpeechInputElement) {
+            activeSpeechInputElement.value = event.results[0][0].transcript;
+        }
+    });
+} else {
+    // Firefox does not support the Web Speech API by default (window.SpeechRecognition is
+    // undefined there); startSpeechInputFor() already no-ops in that case, so clicking the button
+    // does nothing. Marking it visually + via a hover tooltip makes that a visible browser
+    // limitation instead of a bug report. Uses the shared hoverTooltip element (not a native
+    // title) for the same reason documented at the answered-dot tooltips: native title's
+    // timing/display is unreliable. Deliberately NOT using the `disabled` attribute — Firefox
+    // (the exact browser this targets) does not dispatch mouseenter/mouseleave to disabled
+    // buttons, which would make the tooltip never show for the players who need it most.
+    const unsupportedTooltipText = "Spracheingabe wird von diesem Browser nicht unterstützt";
+
+    for (const micButton of document.querySelectorAll(".micButton")) {
+        micButton.classList.add("micButtonUnsupported");
+        micButton.addEventListener("mouseenter", () => showHoverTooltip(micButton, unsupportedTooltipText));
+        micButton.addEventListener("mouseleave", hideHoverTooltip);
+    }
+}
+
+/**
+ * Shows `hoverTooltip` above the given element, horizontally centered on it and clamped to stay
+ * within the viewport. Positioned via JS (instead of a CSS `::after`) because the answered dots
+ * live inside `#listPlayersInGame`, whose `overflow-x: auto` clips any content that pops out
+ * above its bounds.
+ * @param {HTMLElement} anchorElement - The element the tooltip should appear above.
+ * @param {string} text - The tooltip text to display.
+ */
+function showHoverTooltip(anchorElement, text) {
+    hoverTooltip.textContent = text;
+    hoverTooltip.hidden = false;
+
+    const anchorRect = anchorElement.getBoundingClientRect();
+    const tooltipRect = hoverTooltip.getBoundingClientRect();
+    const margin = 8;
+
+    const left = Math.min(
+        Math.max(anchorRect.left + anchorRect.width / 2 - tooltipRect.width / 2, margin),
+        window.innerWidth - tooltipRect.width - margin,
+    );
+    const top = Math.max(anchorRect.top - tooltipRect.height - margin, margin);
+
+    hoverTooltip.style.left = `${left}px`;
+    hoverTooltip.style.top = `${top}px`;
+}
+
+/**
+ * Hides `hoverTooltip` again, undoing `showHoverTooltip()`.
+ */
+function hideHoverTooltip() {
+    hoverTooltip.hidden = true;
+}
+
 /**
  * Renders a player's row of lives as heart icons, greying out the rightmost hearts first as
  * lives are lost.
@@ -257,10 +445,13 @@ function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory, tota
         const answerEntry = answerHistory?.[indexDot];
 
         if (answerEntry) {
-            dot.dataset.tooltip =
+            const tooltipText =
                 `Frage: ${answerEntry.questionText}\n` +
                 `${playerName}'s Antwort: ${answerEntry.answerGiven}\n` +
                 `Richtige Antwort: ${answerEntry.correctAnswer}`;
+
+            dot.addEventListener("mouseenter", () => showHoverTooltip(dot, tooltipText));
+            dot.addEventListener("mouseleave", hideHoverTooltip);
 
             if (answerEntry.isCorrect) {
                 dot.classList.add("correctAnswerDot");
@@ -727,6 +918,7 @@ if (!playerName || !roomCode) {
         renderPlayerLists(idPlayer);
 
         renderQuestionText(question.text);
+        speakQuestionTextIfAutoReadEnabled();
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
         inputAnswer.value = "";
@@ -903,8 +1095,10 @@ if (!playerName || !roomCode) {
 
         inputFinaleAnswerLeft.disabled = !isOwnLeft;
         buttonSubmitFinaleAnswerLeft.disabled = !isOwnLeft;
+        buttonMicFinaleAnswerLeft.hidden = !isOwnLeft;
         inputFinaleAnswerRight.disabled = !isOwnRight;
         buttonSubmitFinaleAnswerRight.disabled = !isOwnRight;
+        buttonMicFinaleAnswerRight.hidden = !isOwnRight;
 
         if (isOwnLeft) {
             inputFinaleAnswerLeft.focus();
@@ -942,6 +1136,7 @@ if (!playerName || !roomCode) {
         elementGameScreen.hidden = false;
 
         renderQuestionText(question.text);
+        speakQuestionTextIfAutoReadEnabled();
         textVotingHint.hidden = true;
         textFinaleProgress.hidden = false;
         textFinaleProgress.textContent = `Finale — Frage ${questionIndex + 1} von ${totalQuestions}`;
@@ -1056,8 +1251,10 @@ if (!playerName || !roomCode) {
 
         inputTiebreakAnswerLeft.disabled = !isOwnLeft;
         buttonSubmitTiebreakAnswerLeft.disabled = !isOwnLeft;
+        buttonMicTiebreakAnswerLeft.hidden = !isOwnLeft;
         inputTiebreakAnswerRight.disabled = !isOwnRight;
         buttonSubmitTiebreakAnswerRight.disabled = !isOwnRight;
+        buttonMicTiebreakAnswerRight.hidden = !isOwnRight;
 
         if (isOwnLeft) {
             inputTiebreakAnswerLeft.focus();
@@ -1094,6 +1291,7 @@ if (!playerName || !roomCode) {
         elementGameScreen.hidden = false;
 
         renderQuestionText(`Stichfrage: ${question.text}`);
+        speakQuestionTextIfAutoReadEnabled();
         textVotingHint.hidden = true;
         textTiebreakVotingHint.hidden = true;
         textFinaleProgress.hidden = true;
@@ -1360,6 +1558,28 @@ if (!playerName || !roomCode) {
 
     buttonSubmitAnswer.addEventListener("click", submitAnswer);
 
+
+    checkboxAutoReadQuestions.checked = Boolean(loadPlayerSettings().autoReadQuestions);
+
+    buttonToggleSettings.addEventListener("click", () => {
+        playerSettingsPanel.hidden = !playerSettingsPanel.hidden;
+    });
+
+    document.addEventListener("click", (event) => {
+        const isClickInsideSettings =
+            playerSettingsPanel.contains(event.target) || buttonToggleSettings.contains(event.target);
+
+        if (!isClickInsideSettings) {
+            playerSettingsPanel.hidden = true;
+        }
+    });
+
+    checkboxAutoReadQuestions.addEventListener("change", () => {
+        savePlayerSettings({autoReadQuestions: checkboxAutoReadQuestions.checked});
+    });
+
+    buttonMicAnswer.addEventListener("click", () => startSpeechInputFor(inputAnswer));
+
     inputFinaleAnswerLeft.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
             submitFinaleAnswerFromOwnInput();
@@ -1376,6 +1596,10 @@ if (!playerName || !roomCode) {
 
     buttonSubmitFinaleAnswerRight.addEventListener("click", submitFinaleAnswerFromOwnInput);
 
+    buttonMicFinaleAnswerLeft.addEventListener("click", () => startSpeechInputFor(inputFinaleAnswerLeft));
+
+    buttonMicFinaleAnswerRight.addEventListener("click", () => startSpeechInputFor(inputFinaleAnswerRight));
+
     inputTiebreakAnswerLeft.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
             submitTiebreakAnswerFromOwnInput();
@@ -1389,6 +1613,10 @@ if (!playerName || !roomCode) {
     });
 
     buttonSubmitTiebreakAnswerLeft.addEventListener("click", submitTiebreakAnswerFromOwnInput);
+
+    buttonMicTiebreakAnswerLeft.addEventListener("click", () => startSpeechInputFor(inputTiebreakAnswerLeft));
+
+    buttonMicTiebreakAnswerRight.addEventListener("click", () => startSpeechInputFor(inputTiebreakAnswerRight));
 
     buttonSubmitTiebreakAnswerRight.addEventListener("click", submitTiebreakAnswerFromOwnInput);
 

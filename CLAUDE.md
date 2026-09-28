@@ -236,3 +236,16 @@ es gibt keine REST-Schnittstelle.
   ID-Regel wie `#finaleReveal { display: flex; }` ohne dieses Scoping gewinnt sonst gegenüber der
   `[hidden] { display: none; }`-Regel des User-Agent-Stylesheets, wodurch das Element trotz
   `hidden`-Attribut sichtbar bleibt.
+
+## bei neuen Fragen
+- Wenn du neue Fragen hinzufügen sollst, sollen die neuen Fragen in server/questionPool.json hinzugefügt werden.
+- Die Fragen haben dieses Format: {"text": string, "answers": array, "difficulty": number}
+- Bevor du neue Fragen erstellt, musst du zuerst beide Collections per curl komplett abrufen und durchgehen:
+  `curl -s "https://hobby-projects-api.onrender.com/der-dummste-fliegt/questions" | python3 -m json.tool`
+  `curl -s "https://hobby-projects-api.onrender.com/der-dummste-fliegt/unreleasedQuestions" | python3 -m json.tool`
+  Erst danach neue Fragen erstellen, die weder vom Text noch von der Antwort her schon existieren egal in welcher Schwierigkeitsstufe.
+- Fragen zum gleichen Thema mit unterschiedlicher Antwort sind kein Duplikat, auch wenn sie umgekehrt formuliert sind
+  (z. B. "Welcher Planet ist der kleinste in unserem Sonnensystem?" → Merkur vs. "Der wievielte kleinste Planet ist
+  Merkur in unserem Sonnensystem?" → 1). Nur wortgleiche oder inhaltlich identische Fragen mit derselben Antwort
+  zählen als Duplikat.
+- Von der Aufteilung her sollen die meisten Fragen die Schwierigkeit 3,4,5 haben. Danach geht die Verteilung Pyramidenförmig.
