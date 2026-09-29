@@ -495,7 +495,7 @@ function handleFinaleAdvanceResult(roomCode, result) {
  * `startGame` event used to start the very first game) can start a fresh game right away — there is
  * no automatic timeout back to the waiting room.
  * @param {string} roomCode - The code of the room.
- * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}} result -
+ * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}} result -
  *   The finale outcome returned by `advanceFinaleQuestion()`.
  */
 function finishFinale(roomCode, result) {
@@ -509,6 +509,7 @@ function finishFinale(roomCode, result) {
         idWinner: result.idWinner,
         correctCounts: result.correctCounts,
         answersByPlayer: result.answersByPlayer,
+        totalQuestions: result.totalQuestions,
         players: getPublicPlayers(roomCode),
     };
 
@@ -611,7 +612,7 @@ function stopGameIfActive(roomCode) {
  * ends, so aborting here as well would both start the finale twice and duplicate that round in the
  * game history.
  * @param {string} roomCode - The code of the room.
- * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}|undefined} removalEffect -
+ * @param {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}|null}|undefined} removalEffect -
  *   The removal effect returned by `leaveRoom()`/`scheduleRemovalOnDisconnect()`.
  */
 function handlePlayerRemovedDuringGame(roomCode, removalEffect) {

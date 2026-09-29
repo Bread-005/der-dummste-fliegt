@@ -35,6 +35,7 @@ const VOTING_DURATION_STEP_MS = 5000;
 const MINIMUM_PLAYERS_TO_START = 2;
 const TEST_PLAYER_NAMES = ["brot1", "brot2", "brot3"];
 const FINALE_QUESTION_COUNT = 5;
+const INSTANT_FINALE_QUESTION_COUNT = 7;
 const FINALE_ROUND_NUMBER = 1000;
 
 /**
@@ -514,7 +515,7 @@ function findByIdSocket(idSocket) {
  * @param {string} roomCode - The code of the room.
  * @param {object} room - The internal room record.
  * @param {string} idPlayer - The persistent id of the player to remove.
- * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}
+ * @returns {{wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}|null}}
  *   Whether the removed player was the one currently up in the question phase, which phase the
  *   game was in at the moment of removal (null if no game was running), whether the removed player
  *   was one of the two active tiebreak candidates, and, if the removed player was one of the two
@@ -534,6 +535,7 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
               idWinner: room.game.finale.idPlayers.find((idFinalist) => idFinalist !== idPlayer),
               correctCounts: {...room.game.finale.correctCounts},
               answersByPlayer: room.game.finale.answersGiven,
+              totalQuestions: room.game.finale.questions.length,
           }
         : null;
 
@@ -799,7 +801,7 @@ function joinRoom(roomCode, idPlayer, idSocket, playerName) {
  * game in progress keeps running for the remaining players; the caller uses `removalEffect` to
  * resync the turn or voting phase if needed.
  * @param {string} idSocket - The socket id of the leaving player.
- * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}|null}
+ * @returns {{roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}|null}}|null}
  *   The affected room, or null if none found.
  */
 function leaveRoom(idSocket) {
@@ -825,7 +827,7 @@ function leaveRoom(idSocket) {
  * without the room being torn down in between. If the grace period elapses without a rejoin, a
  * game in progress keeps running for the remaining players.
  * @param {string} idSocket - The socket id that disconnected.
- * @param {(affectedRoom: {roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}}) => void} onRemoved -
+ * @param {(affectedRoom: {roomCode: string, players: Array<{idPlayer: string, name: string, isHost: boolean}>, removalEffect: {wasCurrentQuestionTurn: boolean, phaseAtRemoval: ("question"|"voting"|"tiebreakQuestion"|"tiebreakVoting"|"finale"|null), wasTiebreakCandidate: boolean, finaleResult: {idWinner: string, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}|null}}) => void} onRemoved -
  *   Called once the player is actually removed, if the room still exists.
  */
 function scheduleRemovalOnDisconnect(idSocket, onRemoved) {
@@ -1714,7 +1716,8 @@ function startFinale(roomCode) {
         return null;
     }
 
-    const finaleQuestions = drawQuestionsFromSharedPool(room, FINALE_QUESTION_COUNT);
+    const questionCount = room.game.isInstantFinale ? INSTANT_FINALE_QUESTION_COUNT : FINALE_QUESTION_COUNT;
+    const finaleQuestions = drawQuestionsFromSharedPool(room, questionCount);
 
     if (finaleQuestions.length === 0) {
         return null;
@@ -1854,7 +1857,7 @@ function resolveFinaleQuestion(roomCode) {
  * Advances the finale to its next question, or, once every finale question has been asked,
  * determines the winner (whoever answered more questions correctly overall; null if tied).
  * @param {string} roomCode - The code of the room.
- * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
+ * @returns {{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|{phase: "finaleFinished", idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>, totalQuestions: number}|null}
  *   The next finale question, the finale outcome, or null if the room has no active finale.
  */
 function advanceFinaleQuestion(roomCode) {
@@ -1880,6 +1883,7 @@ function advanceFinaleQuestion(roomCode) {
             idWinner,
             correctCounts: {...finale.correctCounts},
             answersByPlayer: finale.answersGiven,
+            totalQuestions: finale.questions.length,
         };
     }
 

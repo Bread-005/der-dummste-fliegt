@@ -127,6 +127,7 @@ let autoSubmitAnswerTimeout = null;
 let isFinalePhase = false;
 let finaleIdPlayers = [];
 let finaleAnswersByPlayer = {};
+let finaleTotalQuestions = FINALE_QUESTION_COUNT;
 let hasSubmittedFinaleAnswer = false;
 let isTiebreakActive = false;
 let isTiebreakVotingPhase = false;
@@ -519,7 +520,7 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
         if (isFinalist) {
             answerHistory = finaleAnswersByPlayer[player.idPlayer];
             answeredCount = answerHistory?.length ?? 0;
-            totalAnswerSlots = FINALE_QUESTION_COUNT;
+            totalAnswerSlots = finaleTotalQuestions;
         } else if (isTiebreakActive) {
             // While a tiebreak is running, every player's normal round dots are hidden — only the
             // two tiebreak candidates get dots at all, showing their tiebreak answers instead.
@@ -1127,6 +1128,7 @@ if (!playerName || !roomCode) {
         finaleIdPlayers = idPlayers;
         hasSubmittedFinaleAnswer = false;
         finaleAnswersByPlayer = answersByPlayer;
+        finaleTotalQuestions = totalQuestions;
 
         listPlayersInGame.classList.remove("votingActive", "voted");
         resetTiebreakUi();
@@ -1195,13 +1197,14 @@ if (!playerName || !roomCode) {
      * `finishFinale()` in `server.js`), so the host can adjust settings before restarting. Used both
      * for the live event and to catch a rejoining player up on an already-running finale result
      * display.
-     * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: object, players: Array<object>}} data -
+     * @param {{idWinner: string|null, correctCounts: Object<string, number>, answersByPlayer: object, totalQuestions: number, players: Array<object>}} data -
      *   The finale-result data.
      */
-    function applyFinaleResolved({idWinner, correctCounts, answersByPlayer, players}) {
+    function applyFinaleResolved({idWinner, correctCounts, answersByPlayer, totalQuestions, players}) {
         isFinalePhase = true;
         finaleIdPlayers = Object.keys(correctCounts);
         finaleAnswersByPlayer = answersByPlayer;
+        finaleTotalQuestions = totalQuestions;
         currentPlayers = players;
         hasGameStarted = false;
 
