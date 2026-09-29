@@ -580,7 +580,8 @@ button:hover {
     gap: 5px;
 }
 
-#finaleResult:not([hidden]) {
+#finaleResult:not([hidden]),
+#soloResult:not([hidden]) {
     margin-top: 18px;
     margin-bottom: 50px;
     font-size: 18px;

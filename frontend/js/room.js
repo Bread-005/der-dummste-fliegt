@@ -2,7 +2,10 @@ import {connectToServer} from "./socketClient.js";
 import {getOrCreatePlayerId} from "./playerIdentity.js";
 
 const MINIMUM_PLAYERS_TO_START = 2;
+const MINIMUM_PLAYERS_TO_SHOW_SETTINGS = 3;
 const FINALE_QUESTION_COUNT = 5;
+const INSTANT_FINALE_QUESTION_COUNT = 7;
+const SOLO_QUESTION_COUNT = 10;
 
 let clockOffsetMs = 0;
 
@@ -92,6 +95,8 @@ const textFinaleAnswerRight = document.getElementById("textFinaleAnswerRight");
 const textFinaleCorrectAnswer = document.getElementById("textFinaleCorrectAnswer");
 const finaleResult = document.getElementById("finaleResult");
 const textFinaleWinner = document.getElementById("textFinaleWinner");
+const soloResult = document.getElementById("soloResult");
+const textSoloResult = document.getElementById("textSoloResult");
 const textStartingLivesValue = document.getElementById("textStartingLivesValue");
 const buttonStartingLivesDecrease = document.getElementById("buttonStartingLivesDecrease");
 const buttonStartingLivesIncrease = document.getElementById("buttonStartingLivesIncrease");
@@ -119,6 +124,7 @@ let questionsPerPlayerPerRound = DEFAULT_QUESTIONS_PER_PLAYER_PER_ROUND;
 let votingDurationMs = DEFAULT_VOTING_DURATION_MS;
 let idCurrentTurnPlayer = null;
 let hasGameStarted = false;
+let isSoloGame = false;
 let isVotingPhase = false;
 let hasVotedThisRound = false;
 let answersByPlayerThisRound = {};
@@ -509,6 +515,16 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
 
         const isFinalist = isFinalePhase && finaleIdPlayers.includes(player.idPlayer);
         const isTiebreakCandidate = isTiebreakActive && tiebreakIdPlayers.includes(player.idPlayer);
+        // Before the game has started, a room with exactly two players will skip straight into the
+        // instant finale (see `startGame()` in `roomManager.js`), which has no lives and asks
+        // `INSTANT_FINALE_QUESTION_COUNT` questions instead of `questionsPerPlayerPerRound` — so the
+        // waiting-room preview hides the (here irrelevant) hearts and shows that question count
+        // instead of the round setting. A room with only the host waiting alone likewise previews
+        // `SOLO_QUESTION_COUNT` questions with no hearts — and a running (or just-finished) solo
+        // round (`isSoloGame`, set from `turnStarted`'s `isSolo` flag) keeps that same treatment
+        // instead of falling back to `questionsPerPlayerPerRound` once the game actually starts.
+        const isInstantFinalePreview = !hasGameStarted && currentPlayers.length === MINIMUM_PLAYERS_TO_START;
+        const isSolo = (!hasGameStarted && currentPlayers.length === 1) || isSoloGame;
         // player.answeredCount reflects the server's count as of the last turnStarted/votingStarted
         // broadcast; right after this player's own answer is revealed, the locally known history is
         // already one entry ahead of that (the next such broadcast hasn't arrived yet), so take
@@ -530,10 +546,17 @@ function renderPlayers(targetList, players, idPlayerOnTurn) {
         } else {
             answerHistory = answersByPlayerThisRound[player.idPlayer];
             answeredCount = Math.max(player.answeredCount, answerHistory?.length ?? 0);
-            totalAnswerSlots = Math.max(questionsPerPlayerPerRound, answeredCount);
+            const previewTotalQuestions = isInstantFinalePreview
+                ? INSTANT_FINALE_QUESTION_COUNT
+                : isSolo
+                    ? SOLO_QUESTION_COUNT
+                    : questionsPerPlayerPerRound;
+            totalAnswerSlots = Math.max(previewTotalQuestions, answeredCount);
         }
 
-        itemPlayer.appendChild(renderPlayerHearts(player.lives));
+        if (!isInstantFinalePreview && !isSolo && !isFinalist) {
+            itemPlayer.appendChild(renderPlayerHearts(player.lives));
+        }
         itemPlayer.appendChild(nameElement);
         itemPlayer.appendChild(
             renderPlayerAnsweredDots(player.name, answeredCount, answerHistory, totalAnswerSlots),
@@ -583,9 +606,15 @@ function renderDeadPlayers(deadPlayers) {
 /**
  * Renders the in-game player list from the latest known state, splitting players into the alive
  * player list and the dead-players box, and shows the "Spiel starten"/"Spiel neu starten" button
- * only to the host while no game is running and at least `MINIMUM_PLAYERS_TO_START` players are in
- * the room. Labeled "Spiel neu starten" once a finale result is being shown (i.e. a previous game
- * just ended), "Spiel starten" otherwise, e.g. for the very first game in this room.
+ * only to the host while no game is running, either alone or with at least
+ * `MINIMUM_PLAYERS_TO_START` players in the room. Labeled "Solomodus spielen" while the host is
+ * the only player in the room, "Direktes Finale starten" while exactly `MINIMUM_PLAYERS_TO_START`
+ * players are in the room (that player count skips straight into the instant finale, see
+ * `startGame()` in `roomManager.js`), "Spiel neu starten" once a finale result is being shown (i.e.
+ * a previous game just ended), "Spiel starten" otherwise, e.g. for the very first game in this
+ * room. The settings section itself only appears once at least `MINIMUM_PLAYERS_TO_SHOW_SETTINGS`
+ * players are in the room, since with fewer players the room starts straight into the finale
+ * anyway and the settings (starting lives, questions per round, voting duration) would not apply.
  * @param {string} idOwnPlayer - The persistent id of the player viewing this page.
  */
 function renderPlayerLists(idOwnPlayer) {
@@ -595,22 +624,29 @@ function renderPlayerLists(idOwnPlayer) {
     renderPlayers(listPlayersInGame, alivePlayers, idCurrentTurnPlayer);
     renderDeadPlayers(deadPlayers);
 
-    settingsSection.hidden = hasGameStarted;
+    settingsSection.hidden = hasGameStarted || currentPlayers.length < MINIMUM_PLAYERS_TO_SHOW_SETTINGS;
 
     const ownPlayer = currentPlayers.find((player) => player.idPlayer === idOwnPlayer);
     renderStartingLivesSetting(ownPlayer?.isHost ?? false);
     renderQuestionsPerPlayerPerRoundSetting(ownPlayer?.isHost ?? false);
     renderVotingDurationSetting(ownPlayer?.isHost ?? false);
 
-    buttonStartGame.textContent = finaleResult.hidden ? "Spiel starten" : "Spiel neu starten";
+    if (currentPlayers.length === 1) {
+        buttonStartGame.textContent = "Solomodus spielen";
+    } else if (currentPlayers.length === MINIMUM_PLAYERS_TO_START) {
+        buttonStartGame.textContent = "Direktes Finale starten";
+    } else {
+        buttonStartGame.textContent = finaleResult.hidden ? "Spiel starten" : "Spiel neu starten";
+    }
 
     if (hasGameStarted) {
         buttonStartGame.hidden = true;
         return;
     }
 
+    const isAlone = currentPlayers.length === 1;
     const hasEnoughPlayers = currentPlayers.length >= MINIMUM_PLAYERS_TO_START;
-    buttonStartGame.hidden = !ownPlayer?.isHost || !hasEnoughPlayers;
+    buttonStartGame.hidden = !ownPlayer?.isHost || !(isAlone || hasEnoughPlayers);
 }
 
 /**
@@ -897,12 +933,13 @@ if (!playerName || !roomCode) {
      * Applies a "turnStarted" event's data to the UI: shows the current question, switches to the
      * game screen, and starts the turn's timer bar. Used both for the live event and to catch a
      * rejoining player up on an already-running turn.
-     * @param {{question: {text: string}, idCurrentPlayer: string, turnDurationMs: number, turnStartedAt: number, players: Array<object>, answersByPlayer: object}} data -
+     * @param {{question: {text: string}, idCurrentPlayer: string, isSolo: boolean, turnDurationMs: number, turnStartedAt: number, players: Array<object>, answersByPlayer: object}} data -
      *   The turn data.
      */
-    function applyTurnStarted({question, idCurrentPlayer, turnDurationMs, turnStartedAt, players, answersByPlayer}) {
+    function applyTurnStarted({question, idCurrentPlayer, isSolo, turnDurationMs, turnStartedAt, players, answersByPlayer}) {
         currentPlayers = players;
         hasGameStarted = true;
+        isSoloGame = Boolean(isSolo);
         idCurrentTurnPlayer = idCurrentPlayer;
 
         elementRoomScreen.hidden = true;
@@ -932,6 +969,7 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
+        soloResult.hidden = true;
 
         const isOwnTurn = idCurrentPlayer === idPlayer;
         answerInputRow.hidden = !isOwnTurn;
@@ -1235,6 +1273,44 @@ if (!playerName || !roomCode) {
     }
 
     /**
+     * Applies a "soloResolved" event's data to the UI: shows how many of the solo round's questions
+     * were answered correctly — the final score itself stays visible via the answered-question dots
+     * in the player list, same as the finale — and freezes the timer bar. Also brings the room
+     * settings and the "Solomodus spielen" button back into view (the server has already ended the
+     * game on its side too, see `finishSolo()` in `server.js`). Used both for the live event and to
+     * catch a rejoining player up on an already-shown solo result.
+     * @param {{correctCount: number, totalQuestions: number, answersByPlayer: object, players: Array<object>}} data -
+     *   The solo-result data.
+     */
+    function applySoloResolved({correctCount, totalQuestions, answersByPlayer, players}) {
+        isSoloGame = true;
+        answersByPlayerThisRound = answersByPlayer;
+        currentPlayers = players;
+        hasGameStarted = false;
+
+        elementRoomScreen.hidden = false;
+        elementGameScreen.hidden = false;
+
+        textQuestion.textContent = "Solo-Ergebnis";
+        textLyricsMask.hidden = true;
+        answerInputRow.hidden = true;
+        answerReveal.hidden = true;
+
+        textSoloResult.textContent = `${correctCount} von ${totalQuestions} Fragen richtig beantwortet.`;
+        soloResult.hidden = false;
+
+        renderPlayerLists(idPlayer);
+
+        activeTimer = null;
+        clearTimeout(autoSubmitAnswerTimeout);
+        autoSubmitAnswerTimeout = null;
+        clearTimeout(timerBarColorTimeout);
+        timerBarFill.classList.remove("timerBarWarning", "timerBarDanger");
+        timerBarFill.style.transition = "none";
+        timerBarFill.style.width = "0%";
+    }
+
+    /**
      * Shows the two tiebreak candidates' names next to their input field and enables only the
      * field belonging to the viewing player, exactly like `setupFinaleInputs()` does for the
      * finale's simultaneous-answer layout.
@@ -1432,6 +1508,8 @@ if (!playerName || !roomCode) {
             applyFinaleAnswerRevealed(gameState);
         } else if (gameState.type === "finaleResolved") {
             applyFinaleResolved(gameState);
+        } else if (gameState.type === "soloResolved") {
+            applySoloResolved(gameState);
         }
     }
 
@@ -1476,8 +1554,11 @@ if (!playerName || !roomCode) {
 
     socket.on("finaleResolved", applyFinaleResolved);
 
+    socket.on("soloResolved", applySoloResolved);
+
     socket.on("gameStopped", () => {
         hasGameStarted = false;
+        isSoloGame = false;
         idCurrentTurnPlayer = null;
         isVotingPhase = false;
         hasVotedThisRound = false;
@@ -1506,6 +1587,7 @@ if (!playerName || !roomCode) {
         finaleAnswerRow.hidden = true;
         finaleReveal.hidden = true;
         finaleResult.hidden = true;
+        soloResult.hidden = true;
 
         activeTimer = null;
         clearTimeout(autoSubmitAnswerTimeout);
@@ -1526,7 +1608,11 @@ if (!playerName || !roomCode) {
     });
 
     buttonStartGame.addEventListener("click", () => {
-        socket.emit("startGame", {roomCode});
+        if (currentPlayers.length === 1) {
+            socket.emit("startSoloGame", {roomCode});
+        } else {
+            socket.emit("startGame", {roomCode});
+        }
     });
 
     buttonStartingLivesDecrease.addEventListener("click", () => {

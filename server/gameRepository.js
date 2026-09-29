@@ -6,14 +6,16 @@ const gameHistoryCollection = mongoClient.db("derDummsteFliegt").collection("gam
 
 /**
  * Creates a game's `gameHistory` document with all its fields already present in the desired
- * order (idGame, roomCode, startedAt, settings, players, rounds, endedAt), called once when the
+ * order (idGame, roomCode, startedAt, [settings], players, rounds, endedAt), called once when the
  * host starts the game. Later updates only ever `$set` an already-existing field, so this initial
  * insert is what fixes the field order once and for all; any field added to the shape in the
- * future simply appears at the end.
+ * future simply appears at the end. The `settings` field itself is left out of the document
+ * entirely when `settings` is null, e.g. for the instant finale or a solo round (one or two
+ * players), since the room's settings never applied to those in the first place.
  * @param {string} idGame - The persistent id of the game.
  * @param {string} roomCode - The room code the game was started in.
- * @param {{startingLives: number, questionsPerPlayerPerRound: number}} settings - The room's
- *   settings this game was started with.
+ * @param {{startingLives: number, questionsPerPlayerPerRound: number}|null} settings - The room's
+ *   settings this game was started with, or null to omit the field altogether.
  * @returns {Promise<void>}
  */
 async function createGameHistoryDocument(idGame, roomCode, settings) {
@@ -22,7 +24,7 @@ async function createGameHistoryDocument(idGame, roomCode, settings) {
         idGame,
         roomCode,
         startedAt: new Date(),
-        settings,
+        ...(settings ? {settings} : {}),
         players: [],
         rounds: [],
         endedAt: null,

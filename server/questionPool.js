@@ -3,6 +3,7 @@ import {insertQuestions} from "./questionRepository.js";
 
 const QUESTIONS_TO_ADD_PER_GAME = 10;
 const QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME = 1;
+const QUESTIONS_TO_ADD_PER_SOLO_GAME = 1;
 
 /**
  * Moves up to `count` random questions from the "unreleasedQuestions" collection into the
@@ -17,4 +18,9 @@ async function replenishQuestionsFromPool(count) {
     await insertQuestions(drawnQuestions);
 }
 
-export {replenishQuestionsFromPool, QUESTIONS_TO_ADD_PER_GAME, QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME};
+export {
+    replenishQuestionsFromPool,
+    QUESTIONS_TO_ADD_PER_GAME,
+    QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME,
+    QUESTIONS_TO_ADD_PER_SOLO_GAME,
+};

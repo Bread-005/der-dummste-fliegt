@@ -10,6 +10,7 @@ import {
     replenishQuestionsFromPool,
     QUESTIONS_TO_ADD_PER_GAME,
     QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME,
+    QUESTIONS_TO_ADD_PER_SOLO_GAME,
 } from "./questionPool.js";
 
 /**
@@ -37,6 +38,7 @@ const TEST_PLAYER_NAMES = ["brot1", "brot2", "brot3"];
 const FINALE_QUESTION_COUNT = 5;
 const INSTANT_FINALE_QUESTION_COUNT = 7;
 const FINALE_ROUND_NUMBER = 1000;
+const SOLO_QUESTION_COUNT = 10;
 
 /**
  * Generates a random four-character uppercase room code that is not yet in use.
@@ -134,7 +136,7 @@ const GERMAN_NUMBER_WORD_TO_COUNT = {
     zwei: 2,
     drei: 3,
     vier: 4,
-    fünf: 5,
+    "fünf": 5,
     sechs: 6,
     sieben: 7,
     acht: 8,
@@ -426,12 +428,12 @@ function toPublicPlayers(room) {
  * Builds the public representation of the current turn for a room's active game, if any player
  * from the turn order is still present.
  * @param {object} room - The internal room record.
- * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|null} The
- *   current question turn, or null if no player from the turn order is still in the room.
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string, isSolo: boolean}|null}
+ *   The current question turn, or null if no player from the turn order is still in the room.
  */
 function buildQuestionTurn(room) {
     const turn = getCurrentTurn(room);
-    return turn ? {phase: "question", ...turn} : null;
+    return turn ? {phase: "question", ...turn, isSolo: Boolean(room.game.isSolo)} : null;
 }
 
 /**
@@ -585,6 +587,8 @@ function removePlayerFromRoom(roomCode, room, idPlayer) {
  * Flattens a per-player answer history (as kept for the running round, a tiebreak, or the finale)
  * into a flat list of answer entries, each tagged with the display name (see
  * `getPlayerNameForHistory()`) of the player who gave it, for storage in the game history.
+ * `correctAnswerLabel` (e.g. "Antwort") is dropped, since it is only needed for the live reveal
+ * display, not for the stored history.
  * @param {object} room - The internal room record.
  * @param {Object<string, Array<{questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>>} answersGiven -
  *   The answer history, keyed by player id.
@@ -608,7 +612,7 @@ function hasTestPlayerName(players) {
 
 function flattenAnswersGiven(room, answersGiven) {
     return Object.entries(answersGiven).flatMap(([idPlayer, answers]) =>
-        answers.map((answer) => ({playerName: getPlayerNameForHistory(room, idPlayer), ...answer})),
+        answers.map(({correctAnswerLabel, ...answer}) => ({playerName: getPlayerNameForHistory(room, idPlayer), ...answer})),
     );
 }
 
@@ -876,6 +880,82 @@ function hasEnoughPlayersToStart(roomCode) {
 }
 
 /**
+ * Converts a room's live settings into the shape stored in a game's `gameHistory` document:
+ * `votingDurationMs` (milliseconds, as used by the running game) becomes `votingDuration`, given
+ * in whole seconds, since the stored history is meant for human consumption rather than the timer
+ * logic that needs milliseconds.
+ * @param {RoomSettings} settings - The room's live settings.
+ * @returns {{startingLives: number, questionsPerPlayerPerRound: number, votingDuration: number}}
+ *   The settings as stored in `gameHistory`.
+ */
+function buildGameHistorySettings(settings) {
+    const {votingDurationMs, ...otherSettings} = settings;
+    return {...otherSettings, votingDuration: votingDurationMs / 1000};
+}
+
+/**
+ * Starts a solo round for a room that currently has only its host waiting in it: draws
+ * `SOLO_QUESTION_COUNT` random questions and asks them one at a time exactly like a normal turn
+ * (see `buildQuestionTurn()`), but without voting, other players, or the room's regular settings —
+ * `finishOrContinueSolo()` (called from `advanceTurn()`) ends the round once all of them are
+ * answered instead of moving on to a voting phase. Only the room's host is meant to trigger this
+ * (checked by the caller). If the player's name contains a reserved test name (see
+ * `hasTestPlayerName()`), the game is marked as a test game and no game history is recorded for it.
+ * @param {string} roomCode - The code of the room.
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string, isSolo: true}|null}
+ *   The first solo question, or null if the room does not exist, does not have exactly one player,
+ *   or fewer than `SOLO_QUESTION_COUNT` questions are available.
+ */
+function startSoloGame(roomCode) {
+    const room = rooms.get(roomCode);
+
+    if (!room || room.game || room.players.length !== 1) {
+        return null;
+    }
+
+    const soloQuestions = shuffleArray(getAllQuestions()).slice(0, SOLO_QUESTION_COUNT);
+
+    if (soloQuestions.length < SOLO_QUESTION_COUNT) {
+        return null;
+    }
+
+    const [soloPlayer] = room.players;
+    soloPlayer.lives = room.settings.startingLives;
+    soloPlayer.status = "active";
+
+    const idGame = randomUUID();
+    const isTestGame = hasTestPlayerName(room.players);
+
+    if (!isTestGame) {
+        createGameHistoryDocument(idGame, roomCode, null).catch(console.error);
+    }
+
+    const playersHistory = new Map([[soloPlayer.idPlayer, {idPlayer: soloPlayer.idPlayer, name: soloPlayer.name}]]);
+
+    room.game = {
+        idGame,
+        isTestGame,
+        isSolo: true,
+        startedAt: new Date(),
+        roundNumber: 1,
+        historyRounds: [],
+        playersHistory,
+        leftPlayers: [],
+        shuffledQuestions: soloQuestions,
+        indexQuestion: 0,
+        playerOrder: [soloPlayer.idPlayer],
+        indexCurrentPlayer: 0,
+        answeredCounts: {},
+        answersGiven: {},
+        votes: {},
+        phase: "question",
+    };
+
+    persistPlayersSnapshot(room);
+    return buildQuestionTurn(room);
+}
+
+/**
  * Starts a new game in a room: resets every player's lives, shuffles all available questions
  * once, and sets a random turn order over the room's current players. With exactly two players,
  * a normal round (which needs at least three players to produce a meaningful vote) is skipped
@@ -903,16 +983,17 @@ function startGame(roomCode) {
 
     const idGame = randomUUID();
     const isTestGame = hasTestPlayerName(room.players);
+    const isInstantFinale = room.players.length === 2;
 
     if (!isTestGame) {
-        createGameHistoryDocument(idGame, roomCode, room.settings).catch(console.error);
+        const settingsForHistory = isInstantFinale ? null : buildGameHistorySettings(room.settings);
+        createGameHistoryDocument(idGame, roomCode, settingsForHistory).catch(console.error);
     }
 
     const playersHistory = new Map(
         room.players.map((player) => [player.idPlayer, {idPlayer: player.idPlayer, name: player.name}]),
     );
 
-    const isInstantFinale = room.players.length === 2;
     const shuffledQuestions = isInstantFinale ? [] : shuffleArray(getAllQuestions());
 
     if (!isInstantFinale && shuffledQuestions.length === 0) {
@@ -1032,12 +1113,14 @@ function hasEveryPlayerAnsweredEnough(room) {
  * the pool has been asked exactly once, never simply because a round ended. Takes the finished
  * turn's player id explicitly (captured at answer time, before the delayed reveal) rather than
  * re-reading the current turn, so it still credits the right player even if they left or
- * disconnected during the reveal.
+ * disconnected during the reveal. A solo round (`room.game.isSolo`) has no voting and a fixed
+ * question count instead, so it is finished off separately by `finishOrContinueSolo()` as soon as
+ * its fixed question pool (`SOLO_QUESTION_COUNT` questions, never reshuffled) is exhausted.
  * @param {string} roomCode - The code of the room.
  * @param {string} idFinishedPlayer - The persistent id of the player whose turn just ended.
- * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|null}
- *   The new turn, a voting-phase marker, or null if the room has no active game or no player is
- *   left to take a turn.
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string, isSolo: boolean}|{phase: "voting"}|{phase: "soloFinished", correctCount: number, totalQuestions: number}|null}
+ *   The new turn, a voting-phase marker, the solo round's outcome, or null if the room has no
+ *   active game or no player is left to take a turn.
  */
 function advanceTurn(roomCode, idFinishedPlayer) {
     const room = rooms.get(roomCode);
@@ -1047,8 +1130,11 @@ function advanceTurn(roomCode, idFinishedPlayer) {
     }
 
     room.game.answeredCounts[idFinishedPlayer] = (room.game.answeredCounts[idFinishedPlayer] ?? 0) + 1;
-
     room.game.indexQuestion += 1;
+
+    if (room.game.isSolo) {
+        return finishOrContinueSolo(room, idFinishedPlayer);
+    }
 
     if (room.game.indexQuestion >= room.game.shuffledQuestions.length) {
         room.game.shuffledQuestions = shuffleArray(getAllQuestions());
@@ -1063,6 +1149,39 @@ function advanceTurn(roomCode, idFinishedPlayer) {
     room.game.indexCurrentPlayer = (room.game.indexCurrentPlayer + 1) % room.game.playerOrder.length;
 
     return buildQuestionTurn(room);
+}
+
+/**
+ * Continues a solo round to its next question, or, once its fixed pool of `SOLO_QUESTION_COUNT`
+ * questions has all been asked, records the round into the game history (as a single round entry,
+ * like a normal round) and reports the final outcome.
+ * @param {object} room - The internal room record.
+ * @param {string} idPlayer - The persistent id of the solo player.
+ * @returns {{phase: "question", question: {text: string}, idCurrentPlayer: string, isSolo: true}|{phase: "soloFinished", correctCount: number, totalQuestions: number, answersGiven: Array<object>}}
+ *   The next solo question, or the round's final outcome including the full answer history (for
+ *   the client's answered-question dots).
+ */
+function finishOrContinueSolo(room, idPlayer) {
+    if (room.game.indexQuestion < room.game.shuffledQuestions.length) {
+        return buildQuestionTurn(room);
+    }
+
+    const answersGiven = room.game.answersGiven[idPlayer] ?? [];
+
+    room.game.historyRounds.push({
+        roundNumber: room.game.roundNumber,
+        type: "solo",
+        answers: flattenAnswersGiven(room, room.game.answersGiven),
+        votingResult: null,
+    });
+    persistRoundsSnapshot(room);
+
+    return {
+        phase: "soloFinished",
+        correctCount: answersGiven.filter((answer) => answer.isCorrect).length,
+        totalQuestions: room.game.shuffledQuestions.length,
+        answersGiven,
+    };
 }
 
 /**
@@ -1109,7 +1228,7 @@ function getPublicPlayers(roomCode) {
  * game to the next turn.
  * @param {string} roomCode - The code of the room.
  * @param {string} answerText - The answer text given for the current turn.
- * @returns {{idPlayer: string, playerName: string, questionText: string, correctAnswer: string, correctAnswerLabel: string, isCorrect: boolean}|null}
+ * @returns {{idPlayer: string, playerName: string, questionText: string, correctAnswer: string, correctAnswerLabel: string, isCorrect: boolean, isSolo: boolean}|null}
  *   The reveal info, or null if the room has no active game or no player is left to take a turn.
  */
 function recordCurrentAnswer(roomCode, answerText) {
@@ -1150,6 +1269,7 @@ function recordCurrentAnswer(roomCode, answerText) {
         correctAnswer,
         correctAnswerLabel,
         isCorrect,
+        isSolo: Boolean(room.game.isSolo),
     };
 }
 
@@ -2023,6 +2143,7 @@ function isGameActive(roomCode) {
  * that skipped the normal question rounds entirely (`room.game.isInstantFinale`, a room that only
  * ever had two players) only replenishes `QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME` question
  * instead of the usual `QUESTIONS_TO_ADD_PER_GAME`, since it consumed far fewer questions overall.
+ * Likewise, a solo round (`room.game.isSolo`) only replenishes `QUESTIONS_TO_ADD_PER_SOLO_GAME`.
  * @param {string} roomCode - The code of the room.
  */
 function finalizeGameRecord(roomCode) {
@@ -2034,7 +2155,9 @@ function finalizeGameRecord(roomCode) {
 
     const questionsToReplenish = room.game.isInstantFinale
         ? QUESTIONS_TO_ADD_PER_INSTANT_FINALE_GAME
-        : QUESTIONS_TO_ADD_PER_GAME;
+        : room.game.isSolo
+            ? QUESTIONS_TO_ADD_PER_SOLO_GAME
+            : QUESTIONS_TO_ADD_PER_GAME;
 
     finalizeGameHistory(room.game.idGame, new Date()).catch(console.error);
     replenishQuestionsFromPool(questionsToReplenish).catch(console.error);
@@ -2065,6 +2188,7 @@ export {
     updateVotingDurationMs,
     getRoomSettings,
     startGame,
+    startSoloGame,
     revivePlayersAfterFinale,
     startNextRound,
     isCurrentPlayerSocket,

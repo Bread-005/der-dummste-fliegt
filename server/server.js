@@ -14,6 +14,7 @@ import {
     updateVotingDurationMs,
     getRoomSettings,
     startGame,
+    startSoloGame,
     revivePlayersAfterFinale,
     startNextRound,
     isCurrentPlayerSocket,
@@ -127,12 +128,14 @@ function setGameDisplayState(roomCode, type, payload) {
  * history so far this round (so the answered-question dots keep their color and hover tooltip
  * across a page reload, not just for the live event).
  * @param {string} roomCode - The code of the room.
- * @param {{question: {text: string}, idCurrentPlayer: string}} turn - The turn to broadcast.
+ * @param {{question: {text: string}, idCurrentPlayer: string, isSolo: boolean}} turn - The turn to
+ *   broadcast.
  */
 function broadcastTurn(roomCode, turn) {
     const payload = {
         question: turn.question,
         idCurrentPlayer: turn.idCurrentPlayer,
+        isSolo: Boolean(turn.isSolo),
         turnDurationMs: TURN_DURATION_MS,
         turnStartedAt: Date.now(),
         players: getPublicPlayers(roomCode),
@@ -145,13 +148,13 @@ function broadcastTurn(roomCode, turn) {
 
 /**
  * Applies the result of starting a game or advancing a turn: either broadcasts the next question
- * turn and schedules its timeout, or, once every player has answered enough questions this round,
- * starts the voting phase.
+ * turn and schedules its timeout, ends a solo round, or, once every player has answered enough
+ * questions this round, starts the voting phase.
  * Also handles `startGame()`'s two-player case, where the very first result is already a finale
  * question instead of a normal turn.
  * @param {string} roomCode - The code of the room.
- * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string}|{phase: "voting"}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null} turnResult -
- *   The result returned by `startGame()`, `advanceTurn()`, or `startNextRound()`.
+ * @param {{phase: "question", question: {text: string}, idCurrentPlayer: string, isSolo: boolean}|{phase: "voting"}|{phase: "finale", question: {text: string}, idPlayers: string[], questionIndex: number, totalQuestions: number, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|{phase: "soloFinished", correctCount: number, totalQuestions: number}|null} turnResult -
+ *   The result returned by `startGame()`, `startSoloGame()`, `advanceTurn()`, or `startNextRound()`.
  */
 function handleTurnResult(roomCode, turnResult) {
     if (!turnResult) {
@@ -166,6 +169,11 @@ function handleTurnResult(roomCode, turnResult) {
 
     if (turnResult.phase === "finale") {
         handleFinaleAdvanceResult(roomCode, turnResult);
+        return;
+    }
+
+    if (turnResult.phase === "soloFinished") {
+        finishSolo(roomCode, turnResult);
         return;
     }
 
@@ -557,6 +565,7 @@ function revealAnswerAndAdvance(roomCode, answerText) {
         correctAnswer: reveal.correctAnswer,
         correctAnswerLabel: reveal.correctAnswerLabel,
         isCorrect: reveal.isCorrect,
+        isSolo: reveal.isSolo,
         answersByPlayer: getAnswersGivenThisRound(roomCode),
     };
 
@@ -568,6 +577,34 @@ function revealAnswerAndAdvance(roomCode, answerText) {
     }, REVEAL_DURATION_MS);
 
     turnTimeouts.set(roomCode, revealTimeoutHandle);
+}
+
+/**
+ * Ends a solo round: records its end time into the game history and tops up the question pool
+ * (`finalizeGameRecord()`), then tells the host their final score, together with their full answer
+ * history (so the answered-question dots keep their color once the result is shown). Unlike
+ * `finishFinale()`, there are no other players and no lives to revive.
+ * @param {string} roomCode - The code of the room.
+ * @param {{correctCount: number, totalQuestions: number, answersGiven: Array<object>}} result - The
+ *   solo round's outcome, as returned by `finishOrContinueSolo()` in `roomManager.js`.
+ */
+function finishSolo(roomCode, result) {
+    clearTimeout(turnTimeouts.get(roomCode));
+    turnTimeouts.delete(roomCode);
+
+    finalizeGameRecord(roomCode);
+
+    const players = getPublicPlayers(roomCode);
+    const payload = {
+        correctCount: result.correctCount,
+        totalQuestions: result.totalQuestions,
+        answersByPlayer: players[0] ? {[players[0].idPlayer]: result.answersGiven} : {},
+        players,
+    };
+
+    stopGame(roomCode);
+    setGameDisplayState(roomCode, "soloResolved", payload);
+    socketServer.to(roomCode).emit("soloResolved", payload);
 }
 
 /**
@@ -804,6 +841,35 @@ socketServer.on("connection", (socket) => {
 
         if (!turn) {
             socket.emit("gameErrorMessage", {message: "Es sind aktuell keine Fragen verfügbar."});
+            return;
+        }
+
+        handleTurnResult(roomCode, turn);
+    });
+
+    socket.on("startSoloGame", async ({roomCode}) => {
+        if (!isRoomHost(roomCode, socket.id)) {
+            return;
+        }
+
+        if (isGameActive(roomCode)) {
+            return;
+        }
+
+        if (getAllQuestions().length === 0) {
+            try {
+                await loadQuestions();
+            } catch (error) {
+                console.error("Fragen konnten nicht geladen werden:", error.message);
+            }
+        }
+
+        const turn = startSoloGame(roomCode);
+
+        if (!turn) {
+            socket.emit("gameErrorMessage", {
+                message: "Für den Solomodus werden mindestens 10 Fragen benötigt.",
+            });
             return;
         }
 
