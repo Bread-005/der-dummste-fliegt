@@ -554,6 +554,7 @@ function revealAnswerAndAdvance(roomCode, answerText) {
         answerText,
         questionText: reveal.questionText,
         correctAnswer: reveal.correctAnswer,
+        correctAnswerLabel: reveal.correctAnswerLabel,
         isCorrect: reveal.isCorrect,
         answersByPlayer: getAnswersGivenThisRound(roomCode),
     };

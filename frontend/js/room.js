@@ -422,7 +422,7 @@ function renderPlayerHearts(lives) {
  * the question, the player's answer, and the correct answer as a hover tooltip.
  * @param {string} playerName - The player's display name, used in the tooltip's answer line.
  * @param {number} answeredCount - How many questions the player has already answered this round.
- * @param {Array<{questionText: string, answerGiven: string, correctAnswer: string, isCorrect: boolean}>|undefined} answerHistory -
+ * @param {Array<{questionText: string, answerGiven: string, correctAnswer: string, correctAnswerLabel: string, isCorrect: boolean}>|undefined} answerHistory -
  *   This player's answer history for the round known so far.
  * @param {number} totalSlots - The total number of questions this player answers per round, so
  *   not-yet-answered questions can be shown as placeholder dots evenly alongside answered ones.
@@ -448,7 +448,7 @@ function renderPlayerAnsweredDots(playerName, answeredCount, answerHistory, tota
             const tooltipText =
                 `Frage: ${answerEntry.questionText}\n` +
                 `${playerName}'s Antwort: ${answerEntry.answerGiven}\n` +
-                `Richtige Antwort: ${answerEntry.correctAnswer}`;
+                `${answerEntry.correctAnswerLabel}: ${answerEntry.correctAnswer}`;
 
             dot.addEventListener("mouseenter", () => showHoverTooltip(dot, tooltipText));
             dot.addEventListener("mouseleave", hideHoverTooltip);
@@ -947,16 +947,16 @@ if (!playerName || !roomCode) {
      * Applies an "answerRevealed" event's data to the UI: shows the given and correct answer, and
      * freezes the timer bar. Used both for the live event and to catch a rejoining player up on an
      * already-running reveal.
-     * @param {{idPlayer: string, playerName: string, answerText: string, questionText: string, correctAnswer: string, isCorrect: boolean, answersByPlayer: object}} data -
+     * @param {{idPlayer: string, playerName: string, answerText: string, questionText: string, correctAnswer: string, correctAnswerLabel: string, isCorrect: boolean, answersByPlayer: object}} data -
      *   The reveal data.
      */
-    function applyAnswerRevealed({playerName: answeringPlayerName, answerText, correctAnswer, answersByPlayer}) {
+    function applyAnswerRevealed({playerName: answeringPlayerName, answerText, correctAnswer, correctAnswerLabel, answersByPlayer}) {
         hasGameStarted = true;
         elementRoomScreen.hidden = true;
         elementGameScreen.hidden = false;
         answerInputRow.hidden = true;
         textPlayerAnswer.textContent = `${answeringPlayerName}'s Antwort: ${answerText}`;
-        textCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
+        textCorrectAnswer.textContent = `${correctAnswerLabel}: ${correctAnswer}`;
         answerReveal.hidden = false;
         stopTimerBar();
 
@@ -1158,10 +1158,10 @@ if (!playerName || !roomCode) {
      * to the correct answer, takes over the server's up-to-date answer history for the shared
      * player list's answered-question dots, and freezes the timer bar. Used both for the live event
      * and to catch a rejoining player up on an already-running finale reveal.
-     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: object}} data -
+     * @param {{questionText: string, correctAnswer: string, correctAnswerLabel: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: object}} data -
      *   The finale reveal data.
      */
-    function applyFinaleAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
+    function applyFinaleAnswerRevealed({correctAnswer, correctAnswerLabel, answers, answersByPlayer}) {
         hasGameStarted = true;
         elementRoomScreen.hidden = true;
         elementGameScreen.hidden = false;
@@ -1178,7 +1178,7 @@ if (!playerName || !roomCode) {
         textFinaleAnswerRight.textContent = rightAnswer
             ? `${rightAnswer.playerName}'s Antwort: ${rightAnswer.answerText}`
             : "";
-        textFinaleCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
+        textFinaleCorrectAnswer.textContent = `${correctAnswerLabel}: ${correctAnswer}`;
         finaleReveal.hidden = false;
 
         finaleAnswersByPlayer = answersByPlayer;
@@ -1317,10 +1317,10 @@ if (!playerName || !roomCode) {
      * else's dots stay hidden for the duration of the tiebreak, see `renderPlayers()`), and freezes
      * the timer bar. Used both for the live event and to catch a rejoining player up on an
      * already-running tiebreak reveal.
-     * @param {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, answersByPlayer: object}} data -
+     * @param {{questionText: string, correctAnswer: string, correctAnswerLabel: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, answersByPlayer: object}} data -
      *   The tiebreak reveal data.
      */
-    function applyTiebreakAnswerRevealed({correctAnswer, answers, answersByPlayer}) {
+    function applyTiebreakAnswerRevealed({correctAnswer, correctAnswerLabel, answers, answersByPlayer}) {
         hasGameStarted = true;
         elementRoomScreen.hidden = true;
         elementGameScreen.hidden = false;
@@ -1337,7 +1337,7 @@ if (!playerName || !roomCode) {
         textTiebreakAnswerRight.textContent = rightAnswer
             ? `${rightAnswer.playerName}'s Antwort: ${rightAnswer.answerText}`
             : "";
-        textTiebreakCorrectAnswer.textContent = `Richtige Antwort: ${correctAnswer}`;
+        textTiebreakCorrectAnswer.textContent = `${correctAnswerLabel}: ${correctAnswer}`;
         tiebreakReveal.hidden = false;
 
         tiebreakAnswersByPlayer = answersByPlayer;

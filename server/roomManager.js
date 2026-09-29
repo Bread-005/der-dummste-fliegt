@@ -225,11 +225,27 @@ function isAnswerAccepted(answerGiven, question) {
 }
 
 /**
+ * Checks whether a question has more than one genuinely different accepted answer that should all
+ * be shown to clients (e.g. two different historical figures who both invented something), as
+ * opposed to a single fact with alternate phrasings shown as one canonical entry. "Nenne" questions
+ * and numeric-tolerance questions have their own dedicated display formats (see
+ * `getCorrectAnswerDisplay()`) and are excluded here.
+ * @param {{text: string, answers: string[], tolerance?: number}} question - The question, with its
+ * accepted answers.
+ * @returns {boolean} True if all of the question's accepted answers should be listed.
+ */
+function hasMultipleCorrectAnswers(question) {
+    return !isNameQuestion(question) && !hasNumericToleranceCheck(question) && question.answers.length > 1;
+}
+
+/**
  * Reads the display-friendly correct answer of a question: the first of its accepted answers,
  * treated as the canonical one shown to clients. For questions graded with a numeric tolerance,
  * the accepted tolerance is appended in parentheses (e.g. "206 (+/- 10)"). For "Nenne" questions,
  * whose full accepted-answers set has no single canonical entry, a handful of examples are shown
- * instead (e.g. "z. B. Texas, Kalifornien, Florida, ...").
+ * instead (e.g. "z. B. Texas, Kalifornien, Florida, ..."). For questions with multiple genuinely
+ * different accepted answers (see `hasMultipleCorrectAnswers()`), all of them are shown, joined by
+ * ", " (e.g. "Konrad Adenauer, Adenauer").
  * @param {{text: string, answers: string[], tolerance?: number}} question - The question, with its
  * accepted answers.
  * @returns {string} The canonical correct answer text.
@@ -241,12 +257,27 @@ function getCorrectAnswerDisplay(question) {
         return question.answers.length > exampleCount ? `z. B. ${examples}, ...` : `z. B. ${examples}`;
     }
 
-    const correctAnswer = question.answers[0];
     if (hasNumericToleranceCheck(question)) {
-        return `${correctAnswer} (+/- ${question.tolerance})`;
+        return `${question.answers[0]} (+/- ${question.tolerance})`;
     }
 
-    return correctAnswer;
+    if (hasMultipleCorrectAnswers(question)) {
+        return question.answers.join(", ");
+    }
+
+    return question.answers[0];
+}
+
+/**
+ * Reads the label to show in front of a question's correct-answer text (see
+ * `getCorrectAnswerDisplay()`): the plural form for questions with multiple genuinely different
+ * accepted answers, the singular form otherwise.
+ * @param {{text: string, answers: string[], tolerance?: number}} question - The question, with its
+ * accepted answers.
+ * @returns {string} "Richtige Antworten" or "Richtige Antwort".
+ */
+function getCorrectAnswerLabel(question) {
+    return hasMultipleCorrectAnswers(question) ? "Richtige Antworten" : "Richtige Antwort";
 }
 
 const LYRICS_QUESTION_TEXT_PREFIX_PATTERN = "Finish the lyrics";
@@ -1076,7 +1107,7 @@ function getPublicPlayers(roomCode) {
  * game to the next turn.
  * @param {string} roomCode - The code of the room.
  * @param {string} answerText - The answer text given for the current turn.
- * @returns {{idPlayer: string, playerName: string, questionText: string, correctAnswer: string, isCorrect: boolean}|null}
+ * @returns {{idPlayer: string, playerName: string, questionText: string, correctAnswer: string, correctAnswerLabel: string, isCorrect: boolean}|null}
  *   The reveal info, or null if the room has no active game or no player is left to take a turn.
  */
 function recordCurrentAnswer(roomCode, answerText) {
@@ -1095,6 +1126,7 @@ function recordCurrentAnswer(roomCode, answerText) {
     const player = room.players.find((candidate) => candidate.idPlayer === turn.idCurrentPlayer);
     const question = room.game.shuffledQuestions[room.game.indexQuestion];
     const correctAnswer = getCorrectAnswerDisplay(question);
+    const correctAnswerLabel = getCorrectAnswerLabel(question);
     const isCorrect = isAnswerAccepted(answerText, question);
 
     if (!room.game.answersGiven[turn.idCurrentPlayer]) {
@@ -1105,6 +1137,7 @@ function recordCurrentAnswer(roomCode, answerText) {
         questionText: turn.question.text,
         answerGiven: answerText,
         correctAnswer,
+        correctAnswerLabel,
         isCorrect,
     });
 
@@ -1113,6 +1146,7 @@ function recordCurrentAnswer(roomCode, answerText) {
         playerName: player?.name ?? "Unbekannt",
         questionText: turn.question.text,
         correctAnswer,
+        correctAnswerLabel,
         isCorrect,
     };
 }
@@ -1362,7 +1396,7 @@ function haveBothTiebreakPlayersAnswered(roomCode) {
  * own separate history entries (see `resolveTiebreakVoting()`). Must be called before
  * `startTiebreakVoting()`.
  * @param {string} roomCode - The code of the room.
- * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[], answersByPlayer: Object<string, Array<object>>}|null}
+ * @returns {{questionText: string, correctAnswer: string, correctAnswerLabel: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, idPlayers: string[], answersByPlayer: Object<string, Array<object>>}|null}
  *   The reveal info, or null if the room has no active tiebreak question.
  */
 function resolveTiebreakQuestion(roomCode) {
@@ -1376,6 +1410,7 @@ function resolveTiebreakQuestion(roomCode) {
     const question = tiebreak.question;
 
     const correctAnswer = getCorrectAnswerDisplay(question);
+    const correctAnswerLabel = getCorrectAnswerLabel(question);
 
     const answers = tiebreak.idPlayers.map((idPlayer) => {
         const answerText = tiebreak.answers[idPlayer] ?? "(keine Antwort)";
@@ -1384,7 +1419,13 @@ function resolveTiebreakQuestion(roomCode) {
 
         tiebreak.wasCorrect[idPlayer] = isCorrect;
         tiebreak.answersByPlayer[idPlayer] = [
-            {questionText: getQuestionDisplayText(question), answerGiven: answerText, correctAnswer, isCorrect},
+            {
+                questionText: getQuestionDisplayText(question),
+                answerGiven: answerText,
+                correctAnswer,
+                correctAnswerLabel,
+                isCorrect,
+            },
         ];
 
         return {idPlayer, playerName: player?.name ?? "Unbekannt", answerText, isCorrect};
@@ -1402,6 +1443,7 @@ function resolveTiebreakQuestion(roomCode) {
     return {
         questionText: getQuestionDisplayText(question),
         correctAnswer,
+        correctAnswerLabel,
         answers,
         idPlayers: tiebreak.idPlayers,
         answersByPlayer: tiebreak.answersByPlayer,
@@ -1740,7 +1782,7 @@ function haveBothFinalePlayersAnswered(roomCode) {
  * reload, not just for the single most recently revealed question. Must be called before
  * `advanceFinaleQuestion()` moves the finale on to the next question.
  * @param {string} roomCode - The code of the room.
- * @returns {{questionText: string, correctAnswer: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
+ * @returns {{questionText: string, correctAnswer: string, correctAnswerLabel: string, answers: Array<{idPlayer: string, playerName: string, answerText: string, isCorrect: boolean}>, correctCounts: Object<string, number>, answersByPlayer: Object<string, Array<object>>}|null}
  *   The reveal info, or null if the room has no active finale.
  */
 function resolveFinaleQuestion(roomCode) {
@@ -1753,6 +1795,7 @@ function resolveFinaleQuestion(roomCode) {
     const finale = room.game.finale;
     const question = finale.questions[finale.indexQuestion];
     const correctAnswer = getCorrectAnswerDisplay(question);
+    const correctAnswerLabel = getCorrectAnswerLabel(question);
 
     const answers = finale.idPlayers.map((idPlayer) => {
         const answerText = finale.answers[idPlayer] ?? "(keine Antwort)";
@@ -1770,6 +1813,7 @@ function resolveFinaleQuestion(roomCode) {
             questionText: getQuestionDisplayText(question),
             answerGiven: answerText,
             correctAnswer,
+            correctAnswerLabel,
             isCorrect,
         });
 
@@ -1799,6 +1843,7 @@ function resolveFinaleQuestion(roomCode) {
     return {
         questionText: getQuestionDisplayText(question),
         correctAnswer,
+        correctAnswerLabel,
         answers,
         correctCounts: {...finale.correctCounts},
         answersByPlayer: finale.answersGiven,
