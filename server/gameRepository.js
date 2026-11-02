@@ -73,7 +73,7 @@ async function finalizeGameHistory(idGame, endedAt) {
 /**
  * Counts how many finished games a player took part in from the very first round, used to cap
  * how many custom questions that player may submit (see `countQuestionsCreatedByPlayer()` in
- * `questionRepository.js`/`questionPoolRepository.js`). A player only counts as having taken part
+ * `questionRepository.js`). A player only counts as having taken part
  * in the first round if they show up among that round's recorded answers — someone who joined
  * mid-game as a spectator has an entry in `players` but none in `rounds[0].answers`.
  * @param {string} playerName - The player's name, as recorded in `rounds[].answers[].playerName`.

@@ -75,19 +75,17 @@ es gibt keine REST-Schnittstelle.
   künftigen Durchgängen auftauchen können.
 - Räume und Spieler werden ausschließlich in-memory gehalten (`roomManager.js`, `Map`) — keine
   Persistenz, bei Server-Neustart (z. B. Render-Redeploy) gehen alle aktiven Räume verloren.
-- Der Fragenpool wächst automatisch nach jedem echten Spiel (`replenishQuestionsFromPool()` in
-  `questionPool.js`, aufgerufen aus `finalizeGameRecord()` in `roomManager.js`) aus der
-  MongoDB-Collection `unreleasedQuestions` in die aktive `questions`-Collection; wie viele Fragen
-  das sind (normaler Durchgang vs. reines Sofort-Finale) steht an `finalizeGameRecord()`. Der
-  Nachschub selbst wird nicht im laufenden Betrieb befüllt, sondern ausschließlich lokal:
-  `server/questionPool.json` (git-/docker-ignoriert) ist eine Staging-Datei, die das ebenfalls
-  lokale Skript `server/scripts/addQuestionsLocally.js` per eigenem, im Skript eingetragenem
-  Connection-String in `unreleasedQuestions` einspielt und danach wieder leert.
+- Der Fragenpool wächst nicht mehr automatisch nach einem Spiel. Neue Fragen werden ausschließlich
+  lokal eingespielt: `server/questionPool.json` (git-/docker-ignoriert) ist eine Staging-Datei, die
+  das ebenfalls lokale Skript `server/scripts/addQuestionsLocally.js` per eigenem, im Skript
+  eingetragenem Connection-String direkt in `questions` einspielt (`createdAt` und `addedAt` mit
+  demselben Datum) und danach wieder leert. Von Spielern eingereichte Fragen
+  (`submitQuestion` → `insertQuestions()`) landen ebenfalls direkt in `questions`.
   `plainQuestions.txt` im Repo-Root ist die ursprüngliche Rohtext-Quelle, aus der
   `questionPool.json` geparst wurde. Neue Fragen in `questionPool.json` müssen vorher gegen die
-  bereits vorhandenen Fragen in `questions` und `unreleasedQuestions` geprüft werden (abrufbar über
-  `https://hobby-projects-api.onrender.com/der-dummste-fliegt/questions` bzw.
-  `.../unreleasedQuestions`), um Duplikate im Fragenpool zu vermeiden.
+  bereits vorhandenen Fragen in `questions` geprüft werden (abrufbar über
+  `https://hobby-projects-api.onrender.com/der-dummste-fliegt/questions`), um Duplikate im
+  Fragenpool zu vermeiden.
 - Runden-Engine lebt direkt in `server/roomManager.js` (Raum-Objekt bekommt ein `game`-Feld mit
   gemischtem Fragenpool, per `shuffleArray()` gewürfelter Zugreihenfolge, aktuellem Index,
   `answeredCounts` je `idPlayer` und einer `phase` ("question" oder "voting")). Die
@@ -240,9 +238,8 @@ es gibt keine REST-Schnittstelle.
 ## bei neuen Fragen
 - Wenn du neue Fragen hinzufügen sollst, sollen die neuen Fragen in server/questionPool.json hinzugefügt werden.
 - Die Fragen haben dieses Format: {"text": string, "answers": array, "difficulty": number}
-- Bevor du neue Fragen erstellt, musst du zuerst beide Collections per curl komplett abrufen und durchgehen:
+- Bevor du neue Fragen erstellt, musst du zuerst die Collection per curl komplett abrufen und durchgehen:
   `curl -s "https://hobby-projects-api.onrender.com/der-dummste-fliegt/questions" | python3 -m json.tool`
-  `curl -s "https://hobby-projects-api.onrender.com/der-dummste-fliegt/unreleasedQuestions" | python3 -m json.tool`
   Erst danach neue Fragen erstellen, die weder vom Text noch von der Antwort her schon existieren egal in welcher Schwierigkeitsstufe.
 - Fragen zum gleichen Thema mit unterschiedlicher Antwort sind kein Duplikat, auch wenn sie umgekehrt formuliert sind
   (z. B. "Welcher Planet ist der kleinste in unserem Sonnensystem?" → Merkur vs. "Der wievielte kleinste Planet ist
